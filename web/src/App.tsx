@@ -1,13 +1,26 @@
 import { useReducer } from 'react'
+import { AdOverlay } from './AdOverlay'
+import { fetchAd } from './ads'
 import { CATALOG, findStream } from './catalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
-import { SLOT_COUNT, initialState, isMuted, reducer } from './state'
+import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
 import './index.css'
 
 export default function App() {
   const [state, dispatch] = useReducer(reducer, initialState)
 
+  async function triggerAd() {
+    const slot = pickAdSlot(state)
+    if (slot === null || state.ad) return
+    const ad = await fetchAd()
+    dispatch({ type: 'startAd', slot, clipUrl: ad.clipUrl })
+  }
+
   return (
+    <>
+    <button className="ad-trigger" onClick={triggerAd} disabled={!!state.ad}>
+      Trigger ad
+    </button>
     <div className="grid">
       {Array.from({ length: SLOT_COUNT }, (_, slot) => (
         <section
@@ -29,11 +42,19 @@ export default function App() {
           </select>
           <QuadrantPlayer
             stream={findStream(state.slots[slot])}
-            muted={isMuted(state, slot)}
+            muted={isStreamMuted(state, slot)}
             focused={state.focused === slot}
           />
+          {state.ad?.slot === slot && (
+            <AdOverlay
+              clipUrl={state.ad.clipUrl}
+              muted={isMuted(state, slot)}
+              onEnd={() => dispatch({ type: 'endAd' })}
+            />
+          )}
         </section>
       ))}
     </div>
+    </>
   )
 }

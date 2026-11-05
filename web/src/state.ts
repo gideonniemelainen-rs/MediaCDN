@@ -4,15 +4,20 @@ export interface PlayerState {
   slots: (string | null)[]
   /** Index of the quadrant that owns audio. */
   focused: number
+  /** Ad currently playing over a quadrant, if any. */
+  ad: { slot: number; clipUrl: string } | null
 }
 
 export type Action =
   | { type: 'setStream'; slot: number; streamId: string | null }
   | { type: 'focus'; slot: number }
+  | { type: 'startAd'; slot: number; clipUrl: string }
+  | { type: 'endAd' }
 
 export const initialState: PlayerState = {
   slots: Array(SLOT_COUNT).fill(null),
   focused: 0,
+  ad: null,
 }
 
 export function reducer(state: PlayerState, action: Action): PlayerState {
@@ -20,14 +25,37 @@ export function reducer(state: PlayerState, action: Action): PlayerState {
     case 'setStream': {
       const slots = state.slots.slice()
       slots[action.slot] = action.streamId
-      return { ...state, slots }
+      // A stream change under a running ad would orphan the overlay.
+      return { ...state, slots, ad: state.ad?.slot === action.slot ? null : state.ad }
     }
     case 'focus':
       return action.slot >= 0 && action.slot < SLOT_COUNT ? { ...state, focused: action.slot } : state
+    case 'startAd':
+      // Re-validate here: state may have changed while the ad was being fetched.
+      return state.ad || !canHostAd(state, action.slot)
+        ? state
+        : { ...state, ad: { slot: action.slot, clipUrl: action.clipUrl } }
+    case 'endAd':
+      return state.ad ? { ...state, ad: null } : state
   }
 }
 
 /** Only the focused quadrant is audible. */
 export function isMuted(state: PlayerState, slot: number): boolean {
   return state.focused !== slot
+}
+
+/** Ads go in a quadrant that has a stream and is not the focused one. */
+function canHostAd(state: PlayerState, slot: number): boolean {
+  return slot !== state.focused && state.slots[slot] != null
+}
+
+export function pickAdSlot(state: PlayerState, rand: () => number = Math.random): number | null {
+  const eligible = state.slots.map((_, i) => i).filter((i) => canHostAd(state, i))
+  return eligible.length ? eligible[Math.floor(rand() * eligible.length)] : null
+}
+
+/** The ad owns the audio of its quadrant; the stream underneath stays muted while it plays. */
+export function isStreamMuted(state: PlayerState, slot: number): boolean {
+  return isMuted(state, slot) || state.ad?.slot === slot
 }
