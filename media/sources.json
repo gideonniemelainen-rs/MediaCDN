@@ -1,0 +1,56 @@
+{
+  "_note": "URLs and licenses come from thestudio.io/osvideo (secondary source); verify with scripts/probe-sources.mjs and on each film's original site before mirroring. Attribution strings are provisional.",
+  "titles": [
+    {
+      "id": "llamigos",
+      "title": "Caminandes 3: Llamigos",
+      "kind": "VOD",
+      "url": "https://video.blender.org/download/web-videos/23f3ef79-15dc-44c5-aa45-cf92e78a4509-1080.mp4",
+      "license": "CC BY 3.0",
+      "attribution": "(CC) Blender Foundation | caminandes.com",
+      "sourceUrl": "https://www.thestudio.io/osvideo/"
+    },
+    {
+      "id": "agent-327",
+      "title": "Agent 327: Operation Barbershop",
+      "kind": "VOD",
+      "url": "https://video.blender.org/download/web-videos/264ff760-803e-430e-8d81-15648e904183-804.mp4",
+      "license": "CC BY 3.0",
+      "attribution": "(CC) Blender Foundation | agent327.com",
+      "sourceUrl": "https://www.thestudio.io/osvideo/"
+    },
+    {
+      "id": "coffee-run",
+      "title": "Coffee Run",
+      "kind": "VOD",
+      "url": "https://video.blender.org/download/web-videos/ff8fe61b-026f-4f07-b66b-2a790d6f6ab1-720.mp4",
+      "license": "CC BY 3.0",
+      "attribution": "(CC) Blender Studio | studio.blender.org",
+      "sourceUrl": "https://www.thestudio.io/osvideo/"
+    },
+    {
+      "id": "bbb",
+      "title": "Big Buck Bunny",
+      "kind": "VOD",
+      "url": "https://video.blender.org/download/web-videos/bf1f3fb5-b119-4f9f-9930-8e20e892b898-720.mp4",
+      "license": "CC BY 3.0",
+      "attribution": "(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org",
+      "sourceUrl": "https://peach.blender.org/about/"
+    },
+    {
+      "id": "sprite-fright",
+      "title": "Sprite Fright",
+      "kind": "VOD",
+      "url": "https://video.blender.org/download/web-videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4",
+      "license": "CC BY 3.0",
+      "attribution": "(CC) Blender Studio | studio.blender.org",
+      "sourceUrl": "https://www.thestudio.io/osvideo/"
+    }
+  ],
+  "extraProbes": [
+    "https://download.blender.org/demo/movies/seamcut_blender242.mov",
+    "https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov",
+    "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/Caminandes-_Llama_Drama_-_Short_Movie.ogv/Caminandes-_Llama_Drama_-_Short_Movie.ogv.1080p.vp9.webm",
+    "https://download.opencontent.netflix.com.s3.amazonaws.com/TechblogAssets/Sparks/sparks_license.txt"
+  ]
+}
