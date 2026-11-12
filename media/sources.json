@@ -51,6 +51,6 @@
     "https://download.blender.org/demo/movies/seamcut_blender242.mov",
     "https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov",
     "https://upload.wikimedia.org/wikipedia/commons/transcoded/d/d0/Caminandes-_Llama_Drama_-_Short_Movie.ogv/Caminandes-_Llama_Drama_-_Short_Movie.ogv.1080p.vp9.webm",
-    "https://download.opencontent.netflix.com.s3.amazonaws.com/TechblogAssets/Sparks/sparks_license.txt"
+    "https://s3.amazonaws.com/download.opencontent.netflix.com/TechblogAssets/Sparks/sparks_license.txt"
   ]
 }
