@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import shaka from 'shaka-player'
 import type { Delivery, Resolved } from './catalog'
+import { Controls } from './Controls'
 import { attachTelemetry, recordAbrCap, recordLoadStart } from './telemetry/shaka'
 
 interface Props {
@@ -10,13 +11,17 @@ interface Props {
   delivery: Delivery
   muted: boolean
   focused: boolean
+  /** An ad is covering this quadrant, so the stream's own controls are hidden. */
+  adActive: boolean
+  onTakeAudio: () => void
 }
 
 // Cap unfocused quadrants so four concurrent decodes stay usable.
 const UNFOCUSED_MAX_HEIGHT = 360
 
-export function QuadrantPlayer({ slot, streamId, resolved, delivery, muted, focused }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null)
+export function QuadrantPlayer({ slot, streamId, resolved, delivery, muted, focused, adActive, onTakeAudio }: Props) {
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const playerRef = useRef<shaka.Player | null>(null)
   const [error, setError] = useState<string | null>(null)
   const url = resolved?.url
@@ -60,7 +65,17 @@ export function QuadrantPlayer({ slot, streamId, resolved, delivery, muted, focu
 
   return (
     <>
-      <video ref={videoRef} muted={muted} playsInline />
+      <video
+        ref={(el) => {
+          videoRef.current = el
+          setVideoEl(el)
+        }}
+        muted={muted}
+        playsInline
+      />
+      {videoEl && streamId && resolved && !error && !adActive && (
+        <Controls video={videoEl} playerRef={playerRef} audible={!muted} onTakeAudio={onTakeAudio} />
+      )}
       {streamId && !resolved && <div className="msg">Not available via {delivery}</div>}
       {error && <div className="msg err">{error}</div>}
     </>

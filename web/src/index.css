@@ -6,7 +6,7 @@ html, body, #root { height: 100%; margin: 0; background: #111; color: #eee; font
 .quad.focused { border-color: #4ea1ff; }
 .quad select { position: absolute; top: 6px; left: 6px; z-index: 3; }
 .quad video { width: 100%; height: 100%; object-fit: contain; display: block; }
-.stats { position: absolute; bottom: 6px; left: 6px; z-index: 3; margin: 0; padding: 4px 6px; background: rgba(0,0,0,.65); font: 11px/1.3 ui-monospace, monospace; pointer-events: none; }
+.stats { position: absolute; top: 34px; right: 6px; z-index: 3; margin: 0; padding: 4px 6px; background: rgba(0,0,0,.65); font: 11px/1.3 ui-monospace, monospace; pointer-events: none; }
 .msg { position: absolute; inset: 0; z-index: 1; display: flex; align-items: center; justify-content: center; text-align: center; padding: 20px; color: #aaa; }
 .msg.err { color: #ff7b7b; }
 .ad { position: absolute; inset: 0; z-index: 2; background: #000; }
@@ -18,3 +18,14 @@ html, body, #root { height: 100%; margin: 0; background: #111; color: #eee; font
 .panel th, .panel td { text-align: left; padding: 2px 8px; border-bottom: 1px solid #2a2a2a; }
 .credits { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 4px 8px; font-size: 11px; color: #999; }
 .credits a { color: #7ab7ff; }
+
+.controls { position: absolute; left: 0; right: 0; bottom: 0; z-index: 3; display: flex; align-items: center; gap: 8px; padding: 6px 8px; background: linear-gradient(transparent, rgba(0,0,0,.8)); opacity: 0; transition: opacity .15s; }
+.quad:hover .controls, .controls:focus-within { opacity: 1; }
+.controls button { background: none; border: 0; color: #fff; font-size: 16px; line-height: 1; cursor: pointer; padding: 4px; min-width: 26px; }
+.controls button:hover { color: #7ab7ff; }
+.controls input[type=range] { flex: 1; min-width: 0; accent-color: #4ea1ff; }
+.controls .time { font: 11px ui-monospace, monospace; white-space: nowrap; }
+.controls .live { font-size: 11px; font-weight: 700; color: #aaa; }
+.controls .live.on { color: #ff5c5c; }
+.controls .audio:not(.on) { opacity: .6; }
+.quad:fullscreen { border: 0; }

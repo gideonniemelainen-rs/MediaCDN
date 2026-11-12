@@ -94,6 +94,8 @@ export default function App() {
                 delivery={delivery}
                 muted={isStreamMuted(state, slot)}
                 focused={state.focused === slot}
+                adActive={state.ad?.slot === slot}
+                onTakeAudio={() => dispatch({ type: 'focus', slot })}
               />
               {showStats && stream && <StatsOverlay slot={slot} />}
               {state.ad?.slot === slot && (
