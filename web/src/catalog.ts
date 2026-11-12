@@ -19,6 +19,8 @@ export interface Variant {
 
 export interface Stream {
   id: string
+  /** Streams of the same title share a group, so presets can pick the right variant per delivery. */
+  group: string
   title: string
   kind: StreamKind
   license: string
@@ -43,64 +45,112 @@ const BASES: Partial<Record<Delivery, string>> = {
 }
 
 const BLENDER_WEB = 'https://video.blender.org/download/web-videos/'
-const blenderMp4 = (file: string): Pick<Stream, 'variants'> => ({
-  variants: {
-    direct: { protocol: 'progressive', location: BLENDER_WEB + file },
-    'cdn-public': { protocol: 'progressive', location: `/pub/blender/web-videos/${file}` },
-  },
-})
 
-// Titles and licenses come from media/sources.json and docs/sources.md; URLs are unverified
-// until scripts/probe-sources.mjs has been run.
-export const CATALOG: Stream[] = [
+interface Title {
+  id: string
+  title: string
+  license: string
+  attribution: string
+  sourceUrl: string
+  blenderFile: string
+}
+
+// Mirrors media/sources.json. URLs verified by scripts/probe-sources.mjs (docs/sources.md).
+const TITLES: Title[] = [
   {
     id: 'llamigos',
     title: 'Caminandes 3: Llamigos',
-    kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(CC) Blender Foundation | caminandes.com',
     sourceUrl: 'https://www.thestudio.io/osvideo/',
-    ...blenderMp4('23f3ef79-15dc-44c5-aa45-cf92e78a4509-1080.mp4'),
+    blenderFile: '23f3ef79-15dc-44c5-aa45-cf92e78a4509-1080.mp4',
   },
   {
     id: 'agent-327',
     title: 'Agent 327: Operation Barbershop',
-    kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(CC) Blender Foundation | agent327.com',
     sourceUrl: 'https://www.thestudio.io/osvideo/',
-    ...blenderMp4('264ff760-803e-430e-8d81-15648e904183-804.mp4'),
+    blenderFile: '264ff760-803e-430e-8d81-15648e904183-804.mp4',
   },
   {
     id: 'coffee-run',
     title: 'Coffee Run',
-    kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(CC) Blender Studio | studio.blender.org',
     sourceUrl: 'https://www.thestudio.io/osvideo/',
-    ...blenderMp4('ff8fe61b-026f-4f07-b66b-2a790d6f6ab1-720.mp4'),
+    blenderFile: 'ff8fe61b-026f-4f07-b66b-2a790d6f6ab1-720.mp4',
   },
   {
     id: 'bbb',
     title: 'Big Buck Bunny',
-    kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org',
     sourceUrl: 'https://peach.blender.org/about/',
-    ...blenderMp4('bf1f3fb5-b119-4f9f-9930-8e20e892b898-720.mp4'),
+    blenderFile: 'bf1f3fb5-b119-4f9f-9930-8e20e892b898-720.mp4',
   },
   {
     id: 'sprite-fright',
     title: 'Sprite Fright',
-    kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(CC) Blender Studio | studio.blender.org',
     sourceUrl: 'https://www.thestudio.io/osvideo/',
-    ...blenderMp4('a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4'),
+    blenderFile: 'a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4',
   },
+]
+
+/** Per title: the public progressive file, plus HLS, DASH and looped-live versions of our own packaged copy. */
+function fromTitle(t: Title): Stream[] {
+  const meta = { group: t.id, license: t.license, attribution: t.attribution, sourceUrl: t.sourceUrl }
+  return [
+    {
+      ...meta,
+      id: t.id,
+      title: t.title,
+      kind: 'VOD',
+      variants: {
+        direct: { protocol: 'progressive', location: BLENDER_WEB + t.blenderFile },
+        'cdn-public': { protocol: 'progressive', location: `/pub/blender/web-videos/${t.blenderFile}` },
+      },
+    },
+    {
+      ...meta,
+      id: `${t.id}-hls`,
+      title: `${t.title} (HLS)`,
+      kind: 'VOD',
+      variants: {
+        local: { protocol: 'hls', location: `/${t.id}/master.m3u8` },
+        'cdn-s3': { protocol: 'hls', location: `/s3/${t.id}/master.m3u8` },
+      },
+    },
+    {
+      ...meta,
+      id: `${t.id}-dash`,
+      title: `${t.title} (DASH)`,
+      kind: 'VOD',
+      variants: {
+        local: { protocol: 'dash', location: `/${t.id}/manifest.mpd` },
+        'cdn-s3': { protocol: 'dash', location: `/s3/${t.id}/manifest.mpd` },
+      },
+    },
+    {
+      ...meta,
+      id: `live-${t.id}`,
+      title: `${t.title} (simulated live, HLS)`,
+      kind: 'LIVE',
+      variants: {
+        local: { protocol: 'hls', location: `/live/${t.id}/master.m3u8` },
+      },
+    },
+  ]
+}
+
+export const CATALOG: Stream[] = [
+  ...TITLES.flatMap(fromTitle),
   {
-    id: 'bbb-dash',
-    title: 'Big Buck Bunny (DASH ladder)',
+    id: 'akamai-bbb',
+    group: 'akamai-bbb',
+    title: 'Big Buck Bunny (Akamai DASH ladder)',
     kind: 'VOD',
     license: 'CC BY 3.0',
     attribution: '(c) copyright 2008, Blender Foundation / www.bigbuckbunny.org; packaged by Akamai',
@@ -112,6 +162,7 @@ export const CATALOG: Stream[] = [
   },
   {
     id: 'dashif-live',
+    group: 'dashif-live',
     title: 'DASH-IF live test (2 s segments)',
     kind: 'LIVE',
     license: 'DASH-IF test stream',
@@ -148,4 +199,13 @@ export function streamsFor(delivery: Delivery): Stream[] {
 
 export function findStream(id: string | null): Stream | undefined {
   return id ? CATALOG.find((s) => s.id === id) : undefined
+}
+
+/**
+ * The stream a preset entry stands for under a delivery: a title group (first variant offered) or
+ * the literal 'live' (first live stream offered).
+ */
+export function pickForPreset(entry: string, delivery: Delivery): Stream | undefined {
+  const offered = streamsFor(delivery)
+  return entry === 'live' ? offered.find((s) => s.kind === 'LIVE') : offered.find((s) => s.group === entry)
 }

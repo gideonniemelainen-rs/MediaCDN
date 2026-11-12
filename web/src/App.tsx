@@ -1,17 +1,18 @@
 import { useReducer, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
-import { DELIVERIES, type Delivery, findStream, resolveStream, streamsFor } from './catalog'
+import { DELIVERIES, type Delivery, findStream, pickForPreset, resolveStream, streamsFor } from './catalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
 import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
 import { TelemetryPanel } from './TelemetryPanel'
 import './index.css'
 
-// Fixed layouts so repeated runs are comparable; entries a delivery doesn't offer are skipped.
+// Fixed layouts so repeated runs are comparable. Entries are title groups or 'live'; each resolves
+// to whichever variant the current delivery offers, and to an empty quadrant if none.
 const PRESETS: Record<string, string[]> = {
   '4x same title': ['bbb', 'bbb', 'bbb', 'bbb'],
-  'mixed VOD + live': ['llamigos', 'agent-327', 'bbb-dash', 'dashif-live'],
+  'mixed VOD + live': ['llamigos', 'agent-327', 'bbb', 'live'],
 }
 
 export default function App() {
@@ -22,9 +23,8 @@ export default function App() {
   const offered = streamsFor(delivery)
 
   function applyPreset(ids: string[]) {
-    ids.forEach((id, slot) => {
-      const ok = offered.some((s) => s.id === id)
-      dispatch({ type: 'setStream', slot, streamId: ok ? id : null })
+    ids.forEach((entry, slot) => {
+      dispatch({ type: 'setStream', slot, streamId: pickForPreset(entry, delivery)?.id ?? null })
     })
   }
 
