@@ -1,0 +1,14 @@
+{
+  "_note": "ESTIMATES in USD. Media CDN rates were not found; cdn.* uses Cloud CDN list prices as a proxy (egress, NA/EU first tier). Verify all against current pricing pages before trusting a result.",
+  "s3": {
+    "storagePerGbMonth": 0.023,
+    "getPer1k": 0.0004,
+    "egressPerGb": 0.09,
+    "freeEgressGbPerMonth": 100
+  },
+  "cdn": {
+    "egressPerGb": 0.08,
+    "cacheFillPerGb": 0.01,
+    "lookupPer10k": 0.0075
+  }
+}

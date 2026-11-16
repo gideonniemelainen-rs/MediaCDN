@@ -5,6 +5,7 @@ import { DELIVERIES, type Delivery, findStream, pickForPreset, resolveStream, st
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
 import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
+import { BenchPanel } from './BenchPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import './index.css'
 
@@ -20,6 +21,7 @@ export default function App() {
   const [delivery, setDelivery] = useState<Delivery>('direct')
   const [showStats, setShowStats] = useState(true)
   const [showPanel, setShowPanel] = useState(true)
+  const [showBench, setShowBench] = useState(false)
   const offered = streamsFor(delivery)
 
   function applyPreset(ids: string[]) {
@@ -60,6 +62,9 @@ export default function App() {
         </label>
         <label>
           <input type="checkbox" checked={showPanel} onChange={(e) => setShowPanel(e.target.checked)} /> telemetry
+        </label>
+        <label>
+          <input type="checkbox" checked={showBench} onChange={(e) => setShowBench(e.target.checked)} /> benchmark
         </label>
         <button onClick={triggerAd} disabled={!!state.ad}>
           Trigger ad
@@ -111,6 +116,7 @@ export default function App() {
       </div>
 
       {showPanel && <TelemetryPanel />}
+      {showBench && <BenchPanel />}
 
       <footer className="credits">
         {shown.map((s) => (
