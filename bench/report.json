@@ -1,0 +1,148 @@
+{
+  "generatedAt": "2026-11-16T20:50:11.028Z",
+  "config": {
+    "slug": "bbb",
+    "rung": "media_1.m3u8",
+    "segments": 6,
+    "rounds": 3,
+    "targets": [
+      {
+        "name": "local",
+        "base": "http://localhost:8790"
+      },
+      {
+        "name": "local-b",
+        "base": "http://localhost:8790"
+      }
+    ]
+  },
+  "results": {
+    "local": {
+      "requests": 24,
+      "errors": 0,
+      "bytes": 22930368,
+      "ttfbMs": {
+        "n": 24,
+        "p50": 0.4514160000000089,
+        "p95": 2.0108749999999986,
+        "p99": 27.7485,
+        "mean": 1.7794201250000008
+      },
+      "segmentMs": {
+        "n": 18,
+        "p50": 1.7247080000000068,
+        "p95": 5.618499999999997,
+        "p99": 5.618499999999997,
+        "mean": 2.1186873333333347
+      },
+      "segmentMbps": 4801.386770613625,
+      "hitRatio": null
+    },
+    "local-b": {
+      "requests": 24,
+      "errors": 0,
+      "bytes": 22930368,
+      "ttfbMs": {
+        "n": 24,
+        "p50": 0.3769589999999994,
+        "p95": 0.7471249999999969,
+        "p99": 0.9737079999999878,
+        "mean": 0.4253194166666656
+      },
+      "segmentMs": {
+        "n": 18,
+        "p50": 1.0721670000000074,
+        "p95": 2.3559160000000077,
+        "p99": 2.3559160000000077,
+        "mean": 1.1960554444444444
+      },
+      "segmentMbps": 8505.155325853995,
+      "hitRatio": null
+    }
+  },
+  "perRound": {
+    "local": [
+      {
+        "round": 0,
+        "firstSegmentMs": 3.2541670000000025,
+        "ttfbMs": 1.1221670000000046,
+        "cache": "unknown"
+      },
+      {
+        "round": 1,
+        "firstSegmentMs": 1.1352909999999952,
+        "ttfbMs": 0.33191599999999255,
+        "cache": "unknown"
+      },
+      {
+        "round": 2,
+        "firstSegmentMs": 2.809958000000009,
+        "ttfbMs": 0.8601670000000041,
+        "cache": "unknown"
+      }
+    ],
+    "local-b": [
+      {
+        "round": 0,
+        "firstSegmentMs": 1.4000410000000016,
+        "ttfbMs": 0.3949580000000026,
+        "cache": "unknown"
+      },
+      {
+        "round": 1,
+        "firstSegmentMs": 1.0721670000000074,
+        "ttfbMs": 0.3148340000000047,
+        "cache": "unknown"
+      },
+      {
+        "round": 2,
+        "firstSegmentMs": 1.281917000000007,
+        "ttfbMs": 0.431083000000001,
+        "cache": "unknown"
+      }
+    ]
+  },
+  "cost": {
+    "assumptions": {
+      "hitRatio": 0.9,
+      "hitRatioSource": "assumed (no CDN target measured)",
+      "bytesPerView": 7643456,
+      "requestsPerView": 8,
+      "note": "a \"view\" is one benchmark round: 2 manifests + the sampled segments, not a full viewing session"
+    },
+    "scenarios": [
+      {
+        "label": "light",
+        "viewsPerMonth": 1000,
+        "gbPerMonth": 7.643456,
+        "requestsPerMonth": 8000,
+        "hitRatio": 0.9,
+        "direct": 0.0032,
+        "cdn": 0.625439936,
+        "delta": 0.622239936
+      },
+      {
+        "label": "moderate",
+        "viewsPerMonth": 50000,
+        "gbPerMonth": 382.1728,
+        "requestsPerMonth": 400000,
+        "hitRatio": 0.9,
+        "direct": 25.555552,
+        "cdn": 31.2719968,
+        "delta": 5.716444800000001
+      },
+      {
+        "label": "heavy",
+        "viewsPerMonth": 1000000,
+        "gbPerMonth": 7643.456,
+        "requestsPerMonth": 8000000,
+        "hitRatio": 0.9,
+        "direct": 682.11104,
+        "cdn": 685.2310400000001,
+        "delta": 3.1200000000001182
+      }
+    ],
+    "breakEvenGbPerMonth": null,
+    "ratesNote": "ESTIMATES in USD. Media CDN rates were not found; cdn.* uses Cloud CDN list prices as a proxy (egress, NA/EU first tier). Verify all against current pricing pages before trusting a result."
+  }
+}

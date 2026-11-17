@@ -1,0 +1,22 @@
+{
+  "name": "default",
+  "version": 1,
+  "limits": {
+    "maxDurationSec": 7200,
+    "maxFileBytes": 10737418240,
+    "maxLongSide": 3840,
+    "maxShortSide": 2160,
+    "minDimension": 64,
+    "maxAspect": 4,
+    "lowFpsWarn": 15,
+    "videoCodecs": ["h264", "hevc", "vp8", "vp9", "av1", "mpeg4", "mpeg2video", "prores", "dnxhd", "theora"]
+  },
+  "normalise": {
+    "minFps": 10,
+    "maxFps": 60,
+    "standardFps": [10, 15, 24, 25, 30, 50, 60],
+    "audioRate": 48000,
+    "loudnorm": { "enabled": true, "i": -16, "tp": -1.5, "lra": 11 },
+    "mezzanine": { "crf": 12, "preset": "veryfast" }
+  }
+}

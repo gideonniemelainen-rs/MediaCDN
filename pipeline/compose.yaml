@@ -1,0 +1,21 @@
+# Local runner. `worker` ingests one file: docker compose -f pipeline/compose.yaml run --rm worker /in/bbb.mp4
+# MinIO is the stand-in for GCS/S3 once milestone 2 publishes outputs; start it with --profile publish.
+services:
+  worker:
+    build: .
+    volumes:
+      - ./work:/app/work
+      - ../media/src:/in:ro
+
+  minio:
+    profiles: [publish]
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  minio-data:

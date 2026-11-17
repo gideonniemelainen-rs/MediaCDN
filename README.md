@@ -9,6 +9,7 @@ See `docs/` for architecture and decisions.
 - `web/` React + Vite + TypeScript client (Shaka Player)
 - `ad-service/` ad-decision API (Cloud Run)
 - `catalog/` selectable stream list
+- `pipeline/` UGC transcoding pipeline (ffmpeg + Shaka Packager); see `docs/transcoding-pipeline.md`
 
 ## Local workflow
 ```
@@ -19,6 +20,8 @@ bash scripts/package.sh <id> [--quick]               # ABR ladder -> origin/<id>
 node tools/serve-origin.mjs                          # origin on :8788 (CORS, ranges, /live/<id>/ simulated live)
 node tools/smoke-origin.mjs <id>                     # smoke-test the origin
 node --test tools/                                   # live-simulation unit tests
+node pipeline/bin/ingest.mjs <file> [--id slug]      # validate + normalise an upload -> pipeline/work/<key>/
+node --test pipeline/                                # pipeline unit + end-to-end tests (needs ffmpeg)
 cd web && npm run dev                                # player; pick Delivery = local
 ```
 - Delivery `local` offers `<id>-hls`, `<id>-dash` and `live-<id>` (looped HLS live) for each packaged title.
