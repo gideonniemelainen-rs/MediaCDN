@@ -17,6 +17,6 @@
     "standardFps": [10, 15, 24, 25, 30, 50, 60],
     "audioRate": 48000,
     "loudnorm": { "enabled": true, "i": -16, "tp": -1.5, "lra": 11 },
-    "mezzanine": { "crf": 12, "preset": "veryfast" }
+    "mezzanine": { "crf": 18, "preset": "veryfast" }
   }
 }

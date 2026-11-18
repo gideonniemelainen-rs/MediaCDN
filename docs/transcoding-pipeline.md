@@ -38,7 +38,7 @@ Each stage is a pure planning function plus a thin runner, as in `tools/live.mjs
 
 ### Decisions
 
-- **Mezzanine:** x264 CRF 12 plus FLAC in Matroska. It is a lossless-ish intermediate, not a delivery encode.
+- **Mezzanine:** x264 CRF 18 plus FLAC in Matroska. It is a working intermediate, not a delivery encode, and it is never uploaded to S3 (only packaged ladders are). Measured on a 60 s `bbb.mp4` clip: CRF 18 cuts mezzanine video bytes by 59% versus CRF 12 for about 0.002 SSIM on a 720p/2.8 Mbps rung; CRF 23 loses about 0.008. Re-check with libvmaf on live action, screen recording and noisy clips before treating it as final.
 - **Idempotency:** the job key is the sha256 of the source plus pipeline version plus profile. A `normalised` job is a no-op, and output is written to `.part` then renamed.
 - **Single-pass loudnorm:** two-pass is more accurate but doubles audio time. It is revisitable.
 
@@ -56,6 +56,25 @@ Each stage is a pure planning function plus a thin runner, as in `tools/live.mjs
 - **Shaka Packager** produces CMAF HLS + DASH with `AVERAGE-BANDWIDTH`, `FRAME-RATE` and correct DASH `type`.
 - **Output layout stays compatible** with what `web/src/catalog.ts`, `tools/live.mjs` and `tools/smoke-origin.mjs` read: `<id>/master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s`. If Shaka's naming differs, use its naming templates or a rename step rather than changing the consumers.
 - A rung at or below 360p is always emitted, because unfocused quadrants cap at 360 (`web/src/QuadrantPlayer.tsx`).
+
+### Shaka Packager spike (`pipeline/spike/shaka-spike.sh`)
+
+Packaged the `selftest` mezzanine (3 video rungs plus audio) with Shaka v3.4.2 in the worker image.
+
+- **Naming needs no rename step and no consumer changes.** Explicit per-stream `init_segment`, `segment_template` (`chunk-N-$Number%05d$.m4s`) and `playlist_name` (`media_N.m3u8`) reproduce ffmpeg's layout exactly. Video rungs are 0..k-1 and audio is k, as before. `tools/smoke-origin.mjs` passes all 8 checks against the output, including the simulated live playlist.
+- **Packet check:** the first packet of every sampled video segment is a keyframe on a 4 s boundary (`-g` = fps x 4, `-keyint_min` the same, `-sc_threshold 0`).
+- **Flags that are required:** `--generate_static_live_mpd` (otherwise the MPD is `type="dynamic"` with `minimumUpdatePeriod`), and `lang=en` on the audio stream plus `--default_language en` (otherwise the only audio rendition is `DEFAULT=NO`).
+- **Ladder encodes need `setsar=1` after `scale`:** `scale=-2:240` from 1280x720 gave `sar=640:639`.
+- **Gained over ffmpeg's muxer:** `AVERAGE-BANDWIDTH`, `FRAME-RATE`, `VIDEO-RANGE=SDR`, a `#EXT-X-PLAYLIST-TYPE:VOD` and proper `ENDLIST`.
+- **Differences to watch:** no `#EXT-X-PROGRAM-DATE-TIME` or `#EXT-X-MEDIA-SEQUENCE` in the source playlists (the live simulator generates its own, so nothing breaks), `TARGETDURATION` is 5 for 4 s segments, audio segments are 4.011/3.989 s, and the MPD `frameRate` is unreduced (`12288/512`).
+- **Not yet checked:** playback in Shaka Player in the browser, and amd64.
+
+### libvmaf options (decision pending)
+
+- The pinned johnvansickle 7.0.2 static ffmpeg has no libvmaf. Debian bookworm (ffmpeg 5.1) and trixie (7.1.5) ffmpeg lack it too, and Debian has no vmaf packages.
+- Homebrew ffmpeg 9.0.2 on the host has libvmaf, so local measurement works today.
+- Candidates for the image: a static build that includes libvmaf (johnvansickle `release`/`git` or BtbN, which need a pinned version and sha256), or a source build of libvmaf in a multi-stage Dockerfile.
+- Measured on a 60 s `bbb.mp4` clip (720p/2.8 Mbps rung, VMAF vs source): from source 96.0, via CRF 12 mezzanine 95.2, CRF 16 94.6, CRF 18 93.8, CRF 23 90.3. CRF 18 costs about 1.4 points against CRF 12 on this worst-case clip (rung bitrate above the source bitrate).
 
 ## Milestone 3: artifacts (designed)
 
@@ -80,7 +99,7 @@ The DAM is a consumer and a validator, not a dependency. `asset.json` carries `i
 
 ## Risks
 
-- **Mezzanine size.** CRF 12 is expensive: 384 MB for 10 minutes of 720p. 4K at 2 hours would be tens of GB. Needs a budget decision before cloud (lower CRF, or encode straight from the source when it is already clean).
+- **Mezzanine size.** Decided: CRF 18 (was 12, 384 MB for 10 minutes of 720p). Remaining levers: delete the mezzanine after packaging (bucket lifecycle rule), AAC instead of FLAC (FLAC is about 9 MB per minute), and passthrough of already-clean sources.
 - **Tonemap is verified in the container only.** The Homebrew ffmpeg has no `zscale`, so the HDR integration test skips locally. In the container (arm64), a PQ/BT.2020 10-bit fixture came out as 8-bit `yuv420p` with BT.709 primaries, transfer and matrix. CI should run the suite in the image so this stays covered.
 - **No libvmaf in the pinned ffmpeg.** The johnvansickle 7.0.2 static builds lack it. Milestone 4 needs a different ffmpeg source (another static build or a source build); the Dockerfile only warns for now.
 - **Container pins.** The image builds on arm64 (2026-11-12) with ffmpeg 7.0.2 pinned by sha256 per architecture, and Shaka Packager v3.4.2 (`packager --version` runs). Only the arm64 path has been built. The amd64 hash is pinned from the published archive but the amd64 image and the `packager-linux-x64` asset are untested.
