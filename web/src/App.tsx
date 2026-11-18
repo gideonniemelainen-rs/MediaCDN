@@ -1,7 +1,8 @@
 import { useReducer, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
-import { DELIVERIES, type Delivery, findStream, pickForPreset, resolveStream, streamsFor } from './catalog'
+import { DELIVERIES, type Delivery, findStream, isIndexed, pickForPreset, resolveStream, streamsFor } from './catalog'
+import { useCatalog } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
 import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
@@ -22,11 +23,16 @@ export default function App() {
   const [showStats, setShowStats] = useState(true)
   const [showPanel, setShowPanel] = useState(true)
   const [showBench, setShowBench] = useState(false)
+  const { status, reload } = useCatalog(delivery)
   const offered = streamsFor(delivery)
 
+  // A preset entry the delivery doesn't offer (e.g. a title that isn't packaged yet) falls back to
+  // whichever VOD titles are available, so presets still fill the grid; 'live' stays empty if absent.
   function applyPreset(ids: string[]) {
+    const vod = offered.filter((s) => s.kind === 'VOD')
     ids.forEach((entry, slot) => {
-      dispatch({ type: 'setStream', slot, streamId: pickForPreset(entry, delivery)?.id ?? null })
+      const pick = pickForPreset(entry, delivery) ?? (entry === 'live' ? undefined : vod[slot % Math.max(1, vod.length)])
+      dispatch({ type: 'setStream', slot, streamId: pick?.id ?? null })
     })
   }
 
@@ -52,6 +58,12 @@ export default function App() {
             ))}
           </select>
         </label>
+        <span className="catalog-status">
+          {status.state === 'loading' && 'loading titles...'}
+          {status.state === 'ready' && `${offered.length} streams`}
+          {status.state === 'error' && <span className="error">index: {status.message}</span>}
+        </span>
+        {isIndexed(delivery) && <button onClick={reload}>Reload titles</button>}
         {Object.entries(PRESETS).map(([name, ids]) => (
           <button key={name} onClick={() => applyPreset(ids)}>
             {name}
@@ -121,7 +133,7 @@ export default function App() {
       <footer className="credits">
         {shown.map((s) => (
           <span key={s.id}>
-            {s.title}: {s.attribution}, {s.license} (<a href={s.sourceUrl}>source</a>)
+            {s.title}: {s.attribution}, {s.license} {s.sourceUrl && <>(<a href={s.sourceUrl}>source</a>)</>}
           </span>
         ))}
       </footer>

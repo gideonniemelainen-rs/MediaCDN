@@ -28,14 +28,21 @@ echo "profile=$AWS_PROFILE  $src -> $dest  ${dry[*]:-(uploading)}"
 du -sh "$src" | awk '{print "size: " $1}'
 
 # 1. Media segments and init files (immutable: names never change content).
-aws s3 sync "$src" "$dest" "${dry[@]}" \
+aws s3 sync "$src" "$dest" ${dry[@]+"${dry[@]}"} \
   --exclude '*' --include '*.m4s' \
   --content-type video/mp4 --cache-control "$immutable"
 
 # 2. Manifests last.
-aws s3 sync "$src" "$dest" "${dry[@]}" \
+aws s3 sync "$src" "$dest" ${dry[@]+"${dry[@]}"} \
   --exclude '*' --include '*.m3u8' \
   --content-type application/vnd.apple.mpegurl --cache-control "$manifest_cache"
-aws s3 sync "$src" "$dest" "${dry[@]}" \
+aws s3 sync "$src" "$dest" ${dry[@]+"${dry[@]}"} \
   --exclude '*' --include '*.mpd' \
   --content-type application/dash+xml --cache-control "$manifest_cache"
+
+# 3. Refresh the title index the app reads (lists what is really in the bucket).
+if [[ $go == --go ]]; then
+  node "$root/tools/s3-index.mjs" --go
+else
+  echo "(dry run: index.json would be rebuilt from the bucket contents)"
+fi

@@ -1,103 +1,127 @@
 {
-  "generatedAt": "2026-11-16T20:50:11.028Z",
+  "generatedAt": "2026-11-18T15:15:22.439Z",
   "config": {
     "slug": "bbb",
     "rung": "media_1.m3u8",
     "segments": 6,
-    "rounds": 3,
+    "rounds": 5,
     "targets": [
       {
-        "name": "local",
-        "base": "http://localhost:8790"
+        "name": "s3",
+        "base": "https://streaming-media-test-475812747821.s3.us-east-1.amazonaws.com/media"
       },
       {
-        "name": "local-b",
-        "base": "http://localhost:8790"
+        "name": "local",
+        "base": "http://localhost:8788"
       }
     ]
   },
   "results": {
-    "local": {
-      "requests": 24,
+    "s3": {
+      "requests": 40,
       "errors": 0,
-      "bytes": 22930368,
+      "bytes": 38217280,
       "ttfbMs": {
-        "n": 24,
-        "p50": 0.4514160000000089,
-        "p95": 2.0108749999999986,
-        "p99": 27.7485,
-        "mean": 1.7794201250000008
+        "n": 40,
+        "p50": 81.10954099999981,
+        "p95": 201.3285830000001,
+        "p99": 314.535667,
+        "mean": 102.39377487499998
       },
       "segmentMs": {
-        "n": 18,
-        "p50": 1.7247080000000068,
-        "p95": 5.618499999999997,
-        "p99": 5.618499999999997,
-        "mean": 2.1186873333333347
+        "n": 30,
+        "p50": 137.79995800000006,
+        "p95": 449.150167,
+        "p99": 528.137542,
+        "mean": 156.13627349999996
       },
-      "segmentMbps": 4801.386770613625,
+      "segmentMbps": 65.15230000883386,
       "hitRatio": null
     },
-    "local-b": {
-      "requests": 24,
+    "local": {
+      "requests": 40,
       "errors": 0,
-      "bytes": 22930368,
+      "bytes": 38217280,
       "ttfbMs": {
-        "n": 24,
-        "p50": 0.3769589999999994,
-        "p95": 0.7471249999999969,
-        "p99": 0.9737079999999878,
-        "mean": 0.4253194166666656
+        "n": 40,
+        "p50": 0.6999590000000353,
+        "p95": 2.4927090000001044,
+        "p99": 15.29845800000021,
+        "mean": 1.2809698000000254
       },
       "segmentMs": {
-        "n": 18,
-        "p50": 1.0721670000000074,
-        "p95": 2.3559160000000077,
-        "p99": 2.3559160000000077,
-        "mean": 1.1960554444444444
+        "n": 30,
+        "p50": 2.067667000000256,
+        "p95": 4.600540999999794,
+        "p99": 4.667915999999423,
+        "mean": 2.2946430666666857
       },
-      "segmentMbps": 8505.155325853995,
+      "segmentMbps": 4433.211195722313,
       "hitRatio": null
     }
   },
   "perRound": {
-    "local": [
+    "s3": [
       {
         "round": 0,
-        "firstSegmentMs": 3.2541670000000025,
-        "ttfbMs": 1.1221670000000046,
+        "firstSegmentMs": 449.150167,
+        "ttfbMs": 123.08249999999998,
         "cache": "unknown"
       },
       {
         "round": 1,
-        "firstSegmentMs": 1.1352909999999952,
-        "ttfbMs": 0.33191599999999255,
+        "firstSegmentMs": 137.79995800000006,
+        "ttfbMs": 72.44816600000013,
         "cache": "unknown"
       },
       {
         "round": 2,
-        "firstSegmentMs": 2.809958000000009,
-        "ttfbMs": 0.8601670000000041,
+        "firstSegmentMs": 151.33500000000004,
+        "ttfbMs": 78.52204200000006,
+        "cache": "unknown"
+      },
+      {
+        "round": 3,
+        "firstSegmentMs": 100.56733299999996,
+        "ttfbMs": 76.42412499999955,
+        "cache": "unknown"
+      },
+      {
+        "round": 4,
+        "firstSegmentMs": 110.36962499999936,
+        "ttfbMs": 80.78062499999942,
         "cache": "unknown"
       }
     ],
-    "local-b": [
+    "local": [
       {
         "round": 0,
-        "firstSegmentMs": 1.4000410000000016,
-        "ttfbMs": 0.3949580000000026,
+        "firstSegmentMs": 4.600540999999794,
+        "ttfbMs": 1.9204579999995985,
         "cache": "unknown"
       },
       {
         "round": 1,
-        "firstSegmentMs": 1.0721670000000074,
-        "ttfbMs": 0.3148340000000047,
+        "firstSegmentMs": 1.8067080000000715,
+        "ttfbMs": 0.4776249999999891,
         "cache": "unknown"
       },
       {
         "round": 2,
-        "firstSegmentMs": 1.281917000000007,
-        "ttfbMs": 0.431083000000001,
+        "firstSegmentMs": 3.8737080000000788,
+        "ttfbMs": 1.143207999999504,
+        "cache": "unknown"
+      },
+      {
+        "round": 3,
+        "firstSegmentMs": 2.858541999999943,
+        "ttfbMs": 0.5734170000005179,
+        "cache": "unknown"
+      },
+      {
+        "round": 4,
+        "firstSegmentMs": 2.56775000000016,
+        "ttfbMs": 0.6980830000002243,
         "cache": "unknown"
       }
     ]

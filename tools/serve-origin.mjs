@@ -3,10 +3,11 @@
 // simulated live stream at /live/<slug>/ built from the packaged HLS by tools/live.mjs.
 // Usage: node tools/serve-origin.mjs [port]   (default 8788)
 import { createReadStream } from 'node:fs'
-import { readFile, stat } from 'node:fs/promises'
+import { readFile, readdir, stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { buildIndex } from './index-lib.mjs'
 import { buildLivePlaylist, liveSegmentFile, parseMediaPlaylist } from './live.mjs'
 
 const ROOT = fileURLToPath(new URL('../origin/', import.meta.url))
@@ -64,6 +65,15 @@ async function serveFile(req, res, file, extra = {}) {
   createReadStream(file, { start, end }).pipe(res)
 }
 
+/** /index.json: titles found under origin/, so the app lists whatever is packaged right now. */
+async function localIndex() {
+  const dirs = await readdir(ROOT, { withFileTypes: true }).catch(() => [])
+  const listing = await Promise.all(
+    dirs.filter((d) => d.isDirectory()).map(async (d) => ({ slug: d.name, files: await readdir(join(ROOT, d.name)).catch(() => []) })),
+  )
+  return buildIndex(listing, { live: true })
+}
+
 const playlistCache = new Map()
 async function vodPlaylist(slug, file) {
   const path = safePath(join(slug, file))
@@ -103,6 +113,9 @@ createServer(async (req, res) => {
     if (req.method === 'OPTIONS') return send(res, 204, { 'Access-Control-Max-Age': '600' })
     if (req.method !== 'GET' && req.method !== 'HEAD') return send(res, 405, {}, 'method not allowed')
     const url = new URL(req.url, 'http://x')
+    if (url.pathname === '/index.json') {
+      return send(res, 200, { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-cache' }, JSON.stringify(await localIndex()))
+    }
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '')
     const live = /^live\/([\w-]+)\/([\w.-]+)$/.exec(rel)
     if (live) return await serveLive(req, res, live[1], live[2])
