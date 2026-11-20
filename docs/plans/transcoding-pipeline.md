@@ -84,6 +84,8 @@ Poster frame, seek-preview sprite sheet with WebVTT, optional Whisper captions a
 
 VMAF per rung with a floor (re-encode or reject), retries with backoff, dead letter, status events (`queued|probing|rejected|encoding|packaging|ready|failed`) and stage timings. A local queue first, behind an interface that maps to Pub/Sub plus Cloud Run Jobs.
 
+Partly in place locally: the upload server (`pipeline/bin/serve.mjs`, see `upload-page.md`) already runs the stages as a graph (`pipeline/src/stages.mjs`, `run.mjs`) with per-stage status, timing and progress, one job at a time, persisted under `pipeline/work/jobs/`. What is still missing is VMAF, retries and dead-lettering, and a queue interface for Pub/Sub.
+
 ## DAM integration
 
 The DAM is a consumer and a validator, not a dependency. `asset.json` carries `id`, source hash, probe facts, warnings, renditions, artifacts and pipeline version, plus `license`, `attribution` and `sourceUrl` from `media/sources.json`. Making `web/src/catalog.ts` data-driven from it (the empty `catalog/` dir) is a follow-up.

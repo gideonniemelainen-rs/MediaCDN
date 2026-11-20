@@ -1,6 +1,16 @@
 # pipeline
 
-Ingest stage of the UGC transcoding pipeline: probe, validate, normalise. Design, decisions and the milestone 2-4 roadmap are in `../docs/transcoding-pipeline.md`.
+Ingest stage of the UGC transcoding pipeline: probe, validate, normalise. Design, decisions and the milestone 2-4 roadmap are in `../docs/plans/transcoding-pipeline.md`.
+
+## Upload server
+
+`bin/serve.mjs` runs a video through probe, validate, normalise, package (`scripts/package.sh`), verify and publish (into `origin/ugc-<name>/`), and streams each stage's status to the `/upload/` page. See `../docs/plans/upload-page.md`.
+
+```
+node bin/serve.mjs [--port 8790] [--work dir] [--origin dir]
+```
+
+It listens on loopback only, answers only to `localhost` hosts and to the dev server's origin (`PIPELINE_ALLOWED_ORIGINS=http://localhost:5173,...` to change it), and sends no CORS headers; the browser reaches it through Vite's `/api/pipeline` proxy. It runs ffmpeg on whatever it is sent, so it is for local use.
 
 ```
 node bin/ingest.mjs <file> [--id slug] [--work dir] [--profile file]

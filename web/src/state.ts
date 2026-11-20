@@ -5,13 +5,13 @@ export interface PlayerState {
   /** Index of the quadrant that owns audio. */
   focused: number
   /** Ad currently playing over a quadrant, if any. */
-  ad: { slot: number; clipUrl: string } | null
+  ad: { slot: number; clipUrl: string; label?: string; attribution?: string } | null
 }
 
 export type Action =
   | { type: 'setStream'; slot: number; streamId: string | null }
   | { type: 'focus'; slot: number }
-  | { type: 'startAd'; slot: number; clipUrl: string }
+  | { type: 'startAd'; slot: number; clipUrl: string; label?: string; attribution?: string }
   | { type: 'endAd' }
 
 export const initialState: PlayerState = {
@@ -34,7 +34,7 @@ export function reducer(state: PlayerState, action: Action): PlayerState {
       // Re-validate here: state may have changed while the ad was being fetched.
       return state.ad || !canHostAd(state, action.slot)
         ? state
-        : { ...state, ad: { slot: action.slot, clipUrl: action.clipUrl } }
+        : { ...state, ad: { slot: action.slot, clipUrl: action.clipUrl, label: action.label, attribution: action.attribution } }
     case 'endAd':
       return state.ad ? { ...state, ad: null } : state
   }

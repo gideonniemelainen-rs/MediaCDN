@@ -1,0 +1,104 @@
+/* Upload page. Scoped under .upload-page; the colours match the hard-coded dark palette in index.css. */
+.upload-page {
+  --ok: #3fb950;
+  --run: #4ea1ff;
+  --bad: #ff7b7b;
+  --warn: #f5a623;
+  --idle: #7a7a7a;
+  --card: #181818;
+  --line: #2a2a2a;
+  height: 100%;
+  overflow: auto;
+}
+.upload-page .up-main { max-width: 1400px; margin: 0 auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
+.upload-page .muted { color: #999; }
+.upload-page code { font: 12px ui-monospace, monospace; background: #222; padding: 0 4px; border-radius: 3px; }
+.upload-page .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.upload-page button, .upload-page .button-link { font: inherit; }
+.upload-page .button-link { color: #7ab7ff; }
+
+.upload-page .health { margin-left: auto; font-size: 12px; color: #999; }
+.upload-page .health.up { color: var(--ok); }
+.upload-page .health.down { color: var(--bad); }
+
+.upload-page .drop { position: relative; display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 26px 16px; text-align: center; background: #151515; border: 1px dashed #4a4a4a; border-radius: 8px; cursor: pointer; }
+.upload-page .drop.over { border-color: var(--run); background: #14202e; }
+.upload-page .drop.busy { cursor: progress; opacity: .8; }
+.upload-page .drop:focus-within { outline: 2px solid var(--run); outline-offset: 2px; }
+.upload-page .drop input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.upload-page .drop input:disabled { cursor: not-allowed; }
+
+.upload-page .job-head { display: flex; gap: 10px; align-items: center; }
+.upload-page .job-head strong { font-size: 14px; }
+
+.upload-page .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; background: #2a2a2a; color: #ccc; }
+.upload-page .chip.success, .upload-page .chip.cached { color: var(--ok); background: #12261a; }
+.upload-page .chip.running { color: var(--run); background: #12202f; }
+.upload-page .chip.failed { color: var(--bad); background: #2e1717; }
+
+/* Workflow graph */
+.upload-page .wf-scroll { overflow-x: auto; padding: 16px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.upload-page .wf { position: relative; margin: 0 auto; }
+.upload-page .wf-edges { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+.upload-page .edge { fill: none; stroke: var(--idle); stroke-width: 2; opacity: .45; }
+.upload-page .edge.ok { stroke: var(--ok); opacity: 1; }
+.upload-page .edge.run { stroke: var(--run); opacity: 1; stroke-dasharray: 5 4; animation: up-dash 1s linear infinite; }
+.upload-page .edge.bad { stroke: var(--bad); opacity: .7; }
+
+.upload-page .wf-node { position: absolute; box-sizing: border-box; display: grid; grid-template-columns: 22px 1fr; grid-template-rows: auto auto; column-gap: 8px; align-items: center; text-align: left; padding: 8px 10px; color: #eee; background: #202020; border: 1px solid #343434; border-left: 3px solid var(--idle); border-radius: 6px; cursor: pointer; overflow: hidden; }
+.upload-page .wf-node:hover { background: #272727; }
+.upload-page .wf-node:focus-visible { outline: 2px solid var(--run); outline-offset: 2px; }
+.upload-page .wf-node.selected { background: #2a2a2a; border-color: #6a6a6a; }
+.upload-page .wf-node.success, .upload-page .wf-node.cached { border-left-color: var(--ok); }
+.upload-page .wf-node.running { border-left-color: var(--run); }
+.upload-page .wf-node.failed { border-left-color: var(--bad); }
+.upload-page .wf-node.skipped { opacity: .6; }
+.upload-page .wf-label { font-weight: 600; }
+.upload-page .wf-time { grid-column: 2; font: 11px ui-monospace, monospace; color: #aaa; }
+.upload-page .wf-node .icon { grid-row: 1 / span 2; }
+.upload-page .wf-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: #333; }
+.upload-page .wf-bar i { display: block; height: 100%; background: var(--run); transition: width .2s; }
+
+.upload-page .icon { color: var(--idle); }
+.upload-page .icon.success, .upload-page .icon.cached { color: var(--ok); }
+.upload-page .icon.running { color: var(--run); animation: up-spin .9s linear infinite; }
+.upload-page .icon.failed { color: var(--bad); }
+
+@keyframes up-spin { to { transform: rotate(360deg); } }
+@keyframes up-dash { to { stroke-dashoffset: -18; } }
+@media (prefers-reduced-motion: reduce) {
+  .upload-page .icon.running, .upload-page .edge.run { animation: none; }
+  .upload-page .wf-bar i { transition: none; }
+}
+
+/* Stage details */
+.upload-page .detail { padding: 12px 14px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; }
+.upload-page .detail h2 { margin: 0; font-size: 14px; }
+.upload-page .detail-head { display: flex; gap: 10px; align-items: center; margin-bottom: 8px; }
+.upload-page .summary { margin: 0 0 8px; color: #ddd; }
+.upload-page .note { margin: 4px 0; }
+.upload-page .note.warn { color: var(--warn); }
+.upload-page .note.bad { color: var(--bad); }
+.upload-page .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 16px; margin: 6px 0; font: 12px ui-monospace, monospace; }
+.upload-page .kv-row { display: contents; }
+.upload-page .kv dt { color: #999; }
+.upload-page .kv dd { margin: 0; overflow-wrap: anywhere; }
+.upload-page .rungs { border-collapse: collapse; font: 12px ui-monospace, monospace; margin: 6px 0; }
+.upload-page .rungs th, .upload-page .rungs td { text-align: left; padding: 2px 16px 2px 0; border-bottom: 1px solid var(--line); }
+.upload-page .checks { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 3px; }
+.upload-page .checks .ok span[aria-hidden] { color: var(--ok); }
+.upload-page .checks .bad { color: var(--bad); }
+.upload-page .checks small { color: #999; }
+.upload-page .log { margin: 8px 0 0; max-height: 220px; overflow: auto; padding: 8px; font: 11px/1.4 ui-monospace, monospace; white-space: pre-wrap; background: #0d0d0d; border: 1px solid var(--line); border-radius: 4px; color: #bbb; }
+.upload-page .result video { display: block; width: 100%; max-height: 60vh; background: #000; }
+
+/* Recent uploads */
+.upload-page .jobs { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+.upload-page .jobs button { display: flex; gap: 10px; align-items: center; width: 100%; padding: 6px 8px; color: #eee; background: #202020; border: 1px solid #333; border-radius: 6px; cursor: pointer; text-align: left; }
+.upload-page .jobs button:hover { background: #272727; }
+.upload-page .jobs button.current { border-color: var(--run); }
+.upload-page .jobs .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-page .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--idle); }
+.upload-page .dot.success { background: var(--ok); }
+.upload-page .dot.running { background: var(--run); }
+.upload-page .dot.failed { background: var(--bad); }

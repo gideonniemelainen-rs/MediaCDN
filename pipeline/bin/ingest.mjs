@@ -2,19 +2,13 @@
 // Ingest: probe, validate and normalise one upload into work/<jobKey>/mezzanine.mkv.
 // usage: node pipeline/bin/ingest.mjs <file> [--id slug] [--work dir] [--profile file]
 // exit codes: 0 ok, 1 usage/internal error, 2 rejected by validation, 3 normalise failed
-import { execFile } from 'node:child_process'
-import { createReadStream } from 'node:fs'
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
-import { createHash } from 'node:crypto'
+import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { promisify } from 'node:util'
+import { IngestError, hashFile, jobPaths, normaliseFile, probeFile, readJob, writeJob } from '../src/ingest.mjs'
 import { PIPELINE_VERSION, jobKey, slugify } from '../src/job.mjs'
-import { planNormalise } from '../src/normalise.mjs'
-import { probe } from '../src/probe.mjs'
 import { validate } from '../src/validate.mjs'
 
-const run = promisify(execFile)
 const root = fileURLToPath(new URL('..', import.meta.url))
 
 function parseArgs(argv) {
@@ -30,12 +24,6 @@ function parseArgs(argv) {
   return opts
 }
 
-const hashFile = (file) =>
-  new Promise((ok, fail) => {
-    const h = createHash('sha256')
-    createReadStream(file).on('data', (c) => h.update(c)).on('end', () => ok(h.digest('hex'))).on('error', fail)
-  })
-
 const opts = parseArgs(process.argv.slice(2))
 if (!opts.file) {
   console.error('usage: ingest.mjs <file> [--id slug] [--work dir] [--profile file]')
@@ -46,29 +34,24 @@ const profile = JSON.parse(await readFile(opts.profile, 'utf8'))
 const id = opts.id ?? slugify(basename(opts.file))
 const sourceSha = await hashFile(opts.file)
 const key = jobKey(sourceSha, profile)
-const dir = join(opts.work, key)
-const jobFile = join(dir, 'job.json')
-const mezzanine = join(dir, 'mezzanine.mkv')
+const { dir, jobFile, mezzanine } = jobPaths(opts.work, key)
 await mkdir(dir, { recursive: true })
 
 const job = { jobKey: key, id, pipelineVersion: PIPELINE_VERSION, profile: profile.name, source: { file: basename(opts.file), sha256: sourceSha } }
-const save = (patch) => writeFile(jobFile, JSON.stringify(Object.assign(job, patch), null, 2) + '\n')
+const save = (patch) => writeJob(jobFile, Object.assign(job, patch))
 
-try {
-  const done = JSON.parse(await readFile(jobFile, 'utf8'))
-  if (done.status === 'normalised') {
-    console.log(`${key}: already normalised, nothing to do`)
-    process.exit(0)
-  }
-} catch {}
+if ((await readJob(jobFile))?.status === 'normalised') {
+  console.log(`${key}: already normalised, nothing to do`)
+  process.exit(0)
+}
 
 let info
 try {
-  info = await probe(opts.file)
+  info = await probeFile(opts.file)
 } catch (e) {
-  const errors = [{ code: 'E_UNREADABLE', detail: String(e.stderr ?? e.message).trim().split('\n')[0] }]
-  await save({ status: 'rejected', errors, warnings: [] })
-  console.error(`rejected: ${errors[0].code} ${errors[0].detail}`)
+  if (!(e instanceof IngestError)) throw e
+  await save({ status: 'rejected', errors: [{ code: e.code, detail: e.detail }], warnings: [] })
+  console.error(`rejected: ${e.code} ${e.detail}`)
   process.exit(2)
 }
 
@@ -81,13 +64,13 @@ if (!verdict.ok) {
 }
 
 const tmp = `${mezzanine}.part`
-const plan = planNormalise(info, profile, { input: opts.file, output: tmp })
+let plan
 try {
-  await run('ffmpeg', plan.args, { maxBuffer: 32 * 1024 * 1024 })
+  plan = await normaliseFile({ file: opts.file, info, profile, output: tmp })
   await rename(tmp, mezzanine)
 } catch (e) {
   await rm(tmp, { force: true })
-  const detail = String(e.stderr ?? e.message).trim().split('\n').slice(-3).join(' | ')
+  const detail = e instanceof IngestError ? e.detail : e.message
   await save({ status: 'failed', errors: [{ code: 'E_DECODE_FAILED', detail }], warnings: verdict.warnings })
   console.error(`failed: E_DECODE_FAILED ${detail}`)
   process.exit(3)

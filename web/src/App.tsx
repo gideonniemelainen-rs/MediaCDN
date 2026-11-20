@@ -6,6 +6,7 @@ import { useCatalog } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
 import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
+import { readLaunch } from './launch'
 import { BenchPanel } from './BenchPanel'
 import { TelemetryPanel } from './TelemetryPanel'
 import './index.css'
@@ -18,11 +19,16 @@ const PRESETS: Record<string, string[]> = {
 }
 
 export default function App() {
-  const [state, dispatch] = useReducer(reducer, initialState)
-  const [delivery, setDelivery] = useState<Delivery>('direct')
+  // /?delivery=local&stream=<id>-hls is how the upload page opens a published title here.
+  const [launch] = useState(() => readLaunch(window.location.search))
+  const [state, dispatch] = useReducer(reducer, launch, (l) =>
+    l.stream ? reducer(initialState, { type: 'setStream', slot: 0, streamId: l.stream }) : initialState,
+  )
+  const [delivery, setDelivery] = useState<Delivery>(launch.delivery ?? 'direct')
   const [showStats, setShowStats] = useState(true)
   const [showPanel, setShowPanel] = useState(true)
   const [showBench, setShowBench] = useState(false)
+  const [adMessage, setAdMessage] = useState<string | null>(null)
   const { status, reload } = useCatalog(delivery)
   const offered = streamsFor(delivery)
 
@@ -39,8 +45,13 @@ export default function App() {
   async function triggerAd() {
     const slot = pickAdSlot(state)
     if (slot === null || state.ad) return
-    const ad = await fetchAd()
-    dispatch({ type: 'startAd', slot, clipUrl: ad.clipUrl })
+    setAdMessage(null)
+    try {
+      const ad = await fetchAd()
+      dispatch({ type: 'startAd', slot, clipUrl: ad.clipUrl, label: ad.label, attribution: ad.attribution })
+    } catch (e) {
+      setAdMessage(e instanceof Error ? e.message : String(e))
+    }
   }
 
   const shown = [...new Set(state.slots)].map(findStream).filter((s) => s !== undefined)
@@ -48,6 +59,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="bar">
+        <a className="nav-link" href="/upload/">Upload</a>
         <label>
           Delivery{' '}
           <select value={delivery} onChange={(e) => setDelivery(e.target.value as Delivery)}>
@@ -81,6 +93,7 @@ export default function App() {
         <button onClick={triggerAd} disabled={!!state.ad}>
           Trigger ad
         </button>
+        {adMessage && <span className="error">ad: {adMessage}</span>}
       </header>
 
       <div className="grid">
@@ -118,8 +131,13 @@ export default function App() {
               {state.ad?.slot === slot && (
                 <AdOverlay
                   clipUrl={state.ad.clipUrl}
+                  label={state.ad.label}
+                  attribution={state.ad.attribution}
                   muted={isMuted(state, slot)}
-                  onEnd={() => dispatch({ type: 'endAd' })}
+                  onEnd={(error) => {
+                    if (error) setAdMessage(error)
+                    dispatch({ type: 'endAd' })
+                  }}
                 />
               )}
             </section>

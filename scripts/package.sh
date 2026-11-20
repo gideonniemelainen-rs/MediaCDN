@@ -2,13 +2,15 @@
 # Transcodes media/src/<slug>.mp4 into an ABR ladder and writes DASH (manifest.mpd) and
 # HLS (master.m3u8) over the same CMAF segments into origin/<slug>/.
 # Usage: scripts/package.sh <slug> [--quick]   (--quick: 360p + 720p only)
+# Env: INPUT=<file> and OUT=<dir> override the default paths; PROGRESS=<url> is passed to ffmpeg's
+# -progress (e.g. pipe:1) so a caller can follow the encode.
 set -euo pipefail
 
 slug=${1:?usage: package.sh <slug> [--quick]}
 quick=${2:-}
 root=$(cd "$(dirname "$0")/.." && pwd)
-in="$root/media/src/$slug.mp4"
-out="$root/origin/$slug"
+in="${INPUT:-$root/media/src/$slug.mp4}"
+out="${OUT:-$root/origin/$slug}"
 SEG=4
 
 [ -f "$in" ] || { echo "missing $in (run: node scripts/fetch-sources.mjs $slug)" >&2; exit 1; }
@@ -46,7 +48,10 @@ done
 rm -rf "$out"
 mkdir -p "$out"
 echo "packaging $slug (source ${src_h}p) -> rungs:$sel"
-ffmpeg -hide_banner -loglevel warning -stats -y -i "$in" \
+# Empty-array expansion is an error under `set -u` on bash 3.2 (macOS), hence the + form.
+progress=(-stats)
+[ -z "${PROGRESS:-}" ] || progress=(-nostats -progress "$PROGRESS")
+ffmpeg -hide_banner -loglevel warning ${progress[@]+"${progress[@]}"} -y -i "$in" \
   -filter_complex "$filter" "${args[@]}" -map 0:a:0 \
   -c:v libx264 -preset veryfast -profile:v high -pix_fmt yuv420p -sc_threshold 0 \
   -force_key_frames "expr:gte(t,n_forced*$SEG)" \

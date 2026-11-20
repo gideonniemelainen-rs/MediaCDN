@@ -40,6 +40,11 @@ describe('ads', () => {
     expect(reducer(filled, { type: 'startAd', slot: 3, clipUrl: 'x' }).ad).toBeNull()
   })
 
+  it('keeps the ad label and attribution for the overlay', () => {
+    const playing = reducer(filled, { type: 'startAd', slot: 1, clipUrl: 'x', label: 'Spot', attribution: 'CC BY' })
+    expect(playing.ad).toMatchObject({ slot: 1, clipUrl: 'x', label: 'Spot', attribution: 'CC BY' })
+  })
+
   it('moves audio to the ad when its quadrant is focused', () => {
     const playing = reducer(filled, { type: 'startAd', slot: 1, clipUrl: 'x' })
     expect(isStreamMuted(playing, 1)).toBe(true)
