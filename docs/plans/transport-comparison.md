@@ -15,7 +15,7 @@ What the code and Shaka Player 5.3.3 allow today:
 - A page cannot force a protocol. It can only pick an origin that offers one, so comparison means serving the same content from separate origins that each allow a single protocol.
 - The local origin is cleartext HTTP/1.1 on `node:http` (port 8788), with no TLS or cert setup and no Node HTTP/3 server. `infra/` is empty and `VITE_CDN_BASE` is unset, so there is no Media CDN yet.
 - `Protocol` in `web/src/catalog.ts` already means hls/dash/progressive, so the new concept is named **transport**.
-- `delivery` is one global state (`web/src/App.tsx:22`), so quadrants cannot currently differ.
+- `delivery` was one global state, so quadrants could not differ. As of 2026-11-20 each quadrant has its own delivery (`PlayerState.deliveries` in `web/src/state.ts`), and the telemetry already records it per event. A per-slot transport choice can sit beside it.
 
 ## Decisions
 
@@ -58,7 +58,7 @@ Works against any target.
 ## Milestone 3: live side-by-side comparison
 
 - `catalog.ts`: `type Transport = 'h1' | 'h2' | 'h3'` (the one requested) and `resolveStream(stream, delivery, transport?)` picks the local base. For `cdn-*` and `s3` the transport is whatever the server negotiates.
-- Per-slot transport selection beside Delivery in `App.tsx`, passed to `QuadrantPlayer`. It goes into the effect deps because the URL changes, and into `ctx`.
+- Per-slot transport selection beside the per-quadrant Delivery picker in `App.tsx`, passed to `QuadrantPlayer`. It goes into the effect deps because the URL changes, and into `ctx`.
 - `telemetry/types.ts`: add `transport` to `TelemetryEvent` as a first-class field, like `delivery`.
 - `telemetry/metrics.ts`:
   - `Summary` gains the dominant observed `transport` and mean `connectMs`.

@@ -14,6 +14,8 @@ export default defineConfig({
     env: {
       VITE_LOCAL_BASE: 'http://localhost:8788',
       VITE_S3_BASE: '',
+      VITE_S3_NEAR_BASE: '',
+      VITE_S3_FAR_BASE: '',
       VITE_CDN_BASE: '',
       VITE_ADS_BASE: '',
     },

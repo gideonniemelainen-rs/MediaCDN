@@ -5,15 +5,27 @@ export type Protocol = 'progressive' | 'hls' | 'dash'
  * How bytes reach the player:
  *  direct     public third-party URL, no CDN
  *  local      our own packaged origin on this machine
- *  s3         our S3 bucket read directly (no CDN)
+ *  s3-near    our S3 bucket read directly (no CDN), the one close to the viewer
+ *  s3-far     the same content in a bucket far from the viewer, to show what distance costs
  *  cdn-public Media CDN in front of a public third-party origin
  *  cdn-s3     Media CDN in front of our private S3 bucket
  *
- * `local`, `s3` and `cdn-s3` serve our own packaged titles, which are discovered at runtime from the
- * origin's index.json. `direct` and `cdn-public` use the built-in list of public streams.
+ * `local`, `s3-near`, `s3-far` and `cdn-s3` serve our own packaged titles, which are discovered at
+ * runtime from each origin's index.json. `direct` and `cdn-public` use the built-in list of public
+ * streams. Each quadrant picks its own delivery, so one title can be compared across several.
  */
-export type Delivery = 'direct' | 'local' | 's3' | 'cdn-public' | 'cdn-s3'
-export const DELIVERIES: Delivery[] = ['direct', 'local', 's3', 'cdn-public', 'cdn-s3']
+export type Delivery = 'direct' | 'local' | 's3-near' | 's3-far' | 'cdn-public' | 'cdn-s3'
+export const DELIVERIES: Delivery[] = ['direct', 'local', 's3-near', 's3-far', 'cdn-public', 'cdn-s3']
+
+/** Names for the picker and the on-screen stats. The ids stay as they are in exports. */
+export const DELIVERY_LABEL: Record<Delivery, string> = {
+  direct: 'Direct (public)',
+  local: 'Origin (local)',
+  's3-near': 'S3 near',
+  's3-far': 'S3 far',
+  'cdn-public': 'Media CDN → public',
+  'cdn-s3': 'Media CDN → S3',
+}
 
 export interface Variant {
   protocol: Protocol
@@ -44,7 +56,9 @@ const env = import.meta.env as Record<string, string | undefined>
 const trim = (s: string | undefined) => s?.replace(/\/$/, '')
 const BASES: Partial<Record<Delivery, string>> = {
   local: trim(env.VITE_LOCAL_BASE) ?? 'http://localhost:8788',
-  s3: trim(env.VITE_S3_BASE),
+  // VITE_S3_BASE predates the near/far split and still names the near bucket.
+  's3-near': trim(env.VITE_S3_NEAR_BASE) ?? trim(env.VITE_S3_BASE),
+  's3-far': trim(env.VITE_S3_FAR_BASE),
   'cdn-public': trim(env.VITE_CDN_BASE),
   'cdn-s3': trim(env.VITE_CDN_BASE),
 }
@@ -188,8 +202,15 @@ export interface TitleIndex {
 export type IndexStatus = { state: 'idle' } | { state: 'loading' } | { state: 'ready'; count: number } | { state: 'error'; message: string }
 
 /** Deliveries whose titles come from an index, with the path prefix their index and media live under. */
-const INDEX_PREFIX: Partial<Record<Delivery, string>> = { local: '', s3: '', 'cdn-s3': '/s3' }
-const BASE_VAR: Partial<Record<Delivery, string>> = { local: 'VITE_LOCAL_BASE', s3: 'VITE_S3_BASE', 'cdn-s3': 'VITE_CDN_BASE' }
+const INDEX_PREFIX: Partial<Record<Delivery, string>> = { local: '', 's3-near': '', 's3-far': '', 'cdn-s3': '/s3' }
+const BASE_VAR: Partial<Record<Delivery, string>> = {
+  local: 'VITE_LOCAL_BASE',
+  's3-near': 'VITE_S3_NEAR_BASE',
+  's3-far': 'VITE_S3_FAR_BASE',
+  'cdn-s3': 'VITE_CDN_BASE',
+}
+/** The indexed deliveries, in picker order. */
+export const INDEXED_DELIVERIES = DELIVERIES.filter((d) => d in INDEX_PREFIX)
 export const isIndexed = (d: Delivery) => d in INDEX_PREFIX
 
 const SAFE_ID = /^[a-z0-9][a-z0-9-]*$/
@@ -297,28 +318,54 @@ export function indexUrl(delivery: Delivery): string | undefined {
   return base && prefix !== undefined ? `${base}${prefix}/index.json` : undefined
 }
 
-/** Fetches a delivery's title index. A ready index is reused unless `force` is set (after an upload, say). */
-export async function loadIndex(delivery: Delivery, force = false, fetchFn: typeof fetch = fetch): Promise<void> {
-  if (!isIndexed(delivery)) return
-  const state = statuses.get(delivery)?.state
-  if (state === 'loading' || (state === 'ready' && !force)) return
+const inflight = new Map<Delivery, Promise<void>>()
+
+/**
+ * Fetches a delivery's title index. A ready index is reused unless `force` is set (after an upload,
+ * say). A call while a fetch is already running shares it, so awaiting `loadIndex` always means
+ * "the index is as loaded as it is going to get".
+ */
+export function loadIndex(delivery: Delivery, force = false, fetchFn: typeof fetch = fetch): Promise<void> {
+  if (!isIndexed(delivery)) return Promise.resolve()
+  const running = inflight.get(delivery)
+  if (running) return running
+  if (statuses.get(delivery)?.state === 'ready' && !force) return Promise.resolve()
   const url = indexUrl(delivery)
   if (!url) {
     setStatus(delivery, { state: 'error', message: `no base URL configured (set ${BASE_VAR[delivery]})` })
-    return
+    return Promise.resolve()
   }
   setStatus(delivery, { state: 'loading' })
-  try {
-    const res = await fetchFn(url, { cache: 'no-store' })
-    if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`)
-    setIndex(delivery, parseIndex(await res.json()))
-  } catch (e) {
-    setStatus(delivery, { state: 'error', message: e instanceof Error ? e.message : String(e) })
-  }
+  const p = (async () => {
+    try {
+      const res = await fetchFn(url, { cache: 'no-store' })
+      if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`)
+      setIndex(delivery, parseIndex(await res.json()))
+    } catch (e) {
+      setStatus(delivery, { state: 'error', message: e instanceof Error ? e.message : String(e) })
+    } finally {
+      inflight.delete(delivery)
+    }
+  })()
+  inflight.set(delivery, p)
+  return p
 }
 
 export function streamsFor(delivery: Delivery): Stream[] {
   return [...CATALOG, ...derived].filter((s) => resolveStream(s, delivery))
+}
+
+/**
+ * The stream to show after a quadrant switches delivery. The same stream if the new delivery
+ * offers it (so one title stays put while the source changes); otherwise the same title's
+ * equivalent there (the progressive file on `direct` becomes the HLS copy on `local`); otherwise
+ * the current stream, which the quadrant reports as not available rather than silently emptying.
+ */
+export function streamForDelivery(streamId: string | null, delivery: Delivery): string | null {
+  const current = findStream(streamId)
+  if (!current || resolveStream(current, delivery)) return streamId
+  const sameTitle = streamsFor(delivery).find((s) => s.group === current.group && s.kind === current.kind)
+  return sameTitle?.id ?? streamId
 }
 
 export function findStream(id: string | null): Stream | undefined {

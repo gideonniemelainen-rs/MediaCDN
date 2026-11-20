@@ -1,8 +1,10 @@
-import { useReducer, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
-import { DELIVERIES, type Delivery, findStream, isIndexed, pickForPreset, resolveStream, streamsFor } from './catalog'
-import { useCatalog } from './useCatalog'
+import {
+  DELIVERIES, DELIVERY_LABEL, type Delivery, findStream, isIndexed, loadIndex, pickForPreset, resolveStream, streamForDelivery, streamsFor,
+} from './catalog'
+import { useCatalogs } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
 import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer } from './state'
@@ -12,34 +14,64 @@ import { TelemetryPanel } from './TelemetryPanel'
 import './index.css'
 
 // Fixed layouts so repeated runs are comparable. Entries are title groups or 'live'; each resolves
-// to whichever variant the current delivery offers, and to an empty quadrant if none.
-const PRESETS: Record<string, string[]> = {
-  '4x same title': ['bbb', 'bbb', 'bbb', 'bbb'],
-  'mixed VOD + live': ['llamigos', 'agent-327', 'bbb', 'live'],
+// to whichever variant its quadrant's delivery offers, and to an empty quadrant if none. A slot
+// without a delivery keeps the one it already has.
+interface PresetSlot {
+  entry: string
+  delivery?: Delivery
+}
+const same = (entry: string, delivery?: Delivery): PresetSlot[] => Array.from({ length: 4 }, () => ({ entry, delivery }))
+const PRESETS: Record<string, PresetSlot[]> = {
+  '4x same title': same('bbb'),
+  // Live is only simulated by the local origin.
+  'mixed VOD + live': ['llamigos', 'agent-327', 'bbb', 'live'].map((entry) => ({ entry, delivery: 'local' })),
+  // One title, four ways of getting it: the comparison this tool is for.
+  'compare deliveries': (['local', 's3-near', 's3-far', 'cdn-s3'] as const).map((delivery) => ({ entry: 'bbb', delivery })),
 }
 
 export default function App() {
   // /?delivery=local&stream=<id>-hls is how the upload page opens a published title here.
   const [launch] = useState(() => readLaunch(window.location.search))
-  const [state, dispatch] = useReducer(reducer, launch, (l) =>
-    l.stream ? reducer(initialState, { type: 'setStream', slot: 0, streamId: l.stream }) : initialState,
-  )
-  const [delivery, setDelivery] = useState<Delivery>(launch.delivery ?? 'direct')
+  const [state, dispatch] = useReducer(reducer, launch, (l) => {
+    let s = initialState
+    if (l.delivery) s = reducer(s, { type: 'setDelivery', slot: 0, delivery: l.delivery })
+    if (l.stream) s = reducer(s, { type: 'setStream', slot: 0, streamId: l.stream })
+    return s
+  })
   const [showStats, setShowStats] = useState(true)
   const [showPanel, setShowPanel] = useState(true)
   const [showBench, setShowBench] = useState(false)
   const [adMessage, setAdMessage] = useState<string | null>(null)
-  const { status, reload } = useCatalog(delivery)
-  const offered = streamsFor(delivery)
+  const { indexed, statusOf, reload } = useCatalogs(state.deliveries)
+
+  // Handlers that wait for an index to load need the state as it is then, not when they started.
+  const latest = useRef(state)
+  useEffect(() => {
+    latest.current = state
+  })
 
   // A preset entry the delivery doesn't offer (e.g. a title that isn't packaged yet) falls back to
   // whichever VOD titles are available, so presets still fill the grid; 'live' stays empty if absent.
-  function applyPreset(ids: string[]) {
-    const vod = offered.filter((s) => s.kind === 'VOD')
-    ids.forEach((entry, slot) => {
+  async function applyPreset(preset: PresetSlot[]) {
+    const deliveries = preset.map((p, slot) => p.delivery ?? latest.current.deliveries[slot])
+    // Titles are discovered from each delivery's index, so wait for the ones this layout needs.
+    await Promise.all(deliveries.map((d) => loadIndex(d)))
+    preset.forEach(({ entry }, slot) => {
+      const delivery = deliveries[slot]
+      const vod = streamsFor(delivery).filter((s) => s.kind === 'VOD')
       const pick = pickForPreset(entry, delivery) ?? (entry === 'live' ? undefined : vod[slot % Math.max(1, vod.length)])
+      dispatch({ type: 'setDelivery', slot, delivery })
       dispatch({ type: 'setStream', slot, streamId: pick?.id ?? null })
     })
+  }
+
+  // Switching a quadrant's source keeps its title where the new source has it, and otherwise
+  // moves to that title's equivalent there (the public MP4 becomes the HLS copy, say).
+  async function changeDelivery(slot: number, delivery: Delivery) {
+    dispatch({ type: 'setDelivery', slot, delivery })
+    await loadIndex(delivery)
+    const streamId = streamForDelivery(latest.current.slots[slot], delivery)
+    if (streamId !== latest.current.slots[slot]) dispatch({ type: 'setStream', slot, streamId })
   }
 
   async function triggerAd() {
@@ -60,24 +92,19 @@ export default function App() {
     <div className="app">
       <header className="bar">
         <a className="nav-link" href="/upload/">Upload</a>
-        <label>
-          Delivery{' '}
-          <select value={delivery} onChange={(e) => setDelivery(e.target.value as Delivery)}>
-            {DELIVERIES.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
         <span className="catalog-status">
-          {status.state === 'loading' && 'loading titles...'}
-          {status.state === 'ready' && `${offered.length} streams`}
-          {status.state === 'error' && <span className="error">index: {status.message}</span>}
+          {indexed.map((d) => {
+            const st = statusOf(d)
+            return (
+              <span key={d} className={st.state === 'error' ? 'error' : undefined}>
+                {DELIVERY_LABEL[d]}: {st.state === 'ready' ? `${st.count} titles` : st.state === 'error' ? st.message : 'loading…'}
+              </span>
+            )
+          })}
         </span>
-        {isIndexed(delivery) && <button onClick={reload}>Reload titles</button>}
-        {Object.entries(PRESETS).map(([name, ids]) => (
-          <button key={name} onClick={() => applyPreset(ids)}>
+        {indexed.length > 0 && <button onClick={reload}>Reload titles</button>}
+        {Object.entries(PRESETS).map(([name, preset]) => (
+          <button key={name} onClick={() => void applyPreset(preset)}>
             {name}
           </button>
         ))}
@@ -99,35 +126,55 @@ export default function App() {
       <div className="grid">
         {Array.from({ length: SLOT_COUNT }, (_, slot) => {
           const stream = findStream(state.slots[slot])
+          const delivery = state.deliveries[slot]
+          const offered = streamsFor(delivery)
+          // Say why a quadrant is empty or unavailable when the cause is its source's index.
+          const index = isIndexed(delivery) ? statusOf(delivery) : null
+          const note = index?.state === 'error' ? index.message : index?.state === 'loading' ? 'Loading titles…' : undefined
           return (
             <section
               key={slot}
               className={state.focused === slot ? 'quad focused' : 'quad'}
               onClick={() => dispatch({ type: 'focus', slot })}
             >
-              <select
-                value={state.slots[slot] ?? ''}
-                onClick={(e) => e.stopPropagation()}
-                onChange={(e) => dispatch({ type: 'setStream', slot, streamId: e.target.value || null })}
-              >
-                <option value="">(empty)</option>
-                {offered.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title} [{s.kind}]
-                  </option>
-                ))}
-              </select>
+              <div className="quad-pickers" onClick={(e) => e.stopPropagation()}>
+                <select
+                  aria-label={`Quadrant ${slot + 1} delivery`}
+                  value={delivery}
+                  onChange={(e) => void changeDelivery(slot, e.target.value as Delivery)}
+                >
+                  {DELIVERIES.map((d) => (
+                    <option key={d} value={d}>
+                      {DELIVERY_LABEL[d]}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label={`Quadrant ${slot + 1} stream`}
+                  value={state.slots[slot] ?? ''}
+                  onChange={(e) => dispatch({ type: 'setStream', slot, streamId: e.target.value || null })}
+                >
+                  <option value="">(empty)</option>
+                  {stream && !offered.some((s) => s.id === stream.id) && <option value={stream.id}>{stream.title} (not offered here)</option>}
+                  {offered.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.title} [{s.kind}]
+                    </option>
+                  ))}
+                </select>
+              </div>
               <QuadrantPlayer
                 slot={slot}
                 streamId={stream?.id}
                 resolved={stream && resolveStream(stream, delivery)}
+                note={note}
                 delivery={delivery}
                 muted={isStreamMuted(state, slot)}
                 focused={state.focused === slot}
                 adActive={state.ad?.slot === slot}
                 onTakeAudio={() => dispatch({ type: 'focus', slot })}
               />
-              {showStats && stream && <StatsOverlay slot={slot} />}
+              {showStats && stream && <StatsOverlay slot={slot} delivery={delivery} />}
               {state.ad?.slot === slot && (
                 <AdOverlay
                   clipUrl={state.ad.clipUrl}

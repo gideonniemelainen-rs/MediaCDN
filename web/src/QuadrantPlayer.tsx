@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import shaka from 'shaka-player'
-import type { Delivery, Resolved } from './catalog'
+import { DELIVERY_LABEL, type Delivery, type Resolved } from './catalog'
 import { Controls } from './Controls'
 import { attachTelemetry, recordAbrCap, recordLoadStart } from './telemetry/shaka'
 
@@ -8,6 +8,8 @@ interface Props {
   slot: number
   streamId: string | undefined
   resolved: Resolved | undefined
+  /** Why the source cannot offer anything yet (its index is loading or failed), if that is the reason. */
+  note?: string
   delivery: Delivery
   muted: boolean
   focused: boolean
@@ -19,7 +21,7 @@ interface Props {
 // Cap unfocused quadrants so four concurrent decodes stay usable.
 const UNFOCUSED_MAX_HEIGHT = 360
 
-export function QuadrantPlayer({ slot, streamId, resolved, delivery, muted, focused, adActive, onTakeAudio }: Props) {
+export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted, focused, adActive, onTakeAudio }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const playerRef = useRef<shaka.Player | null>(null)
@@ -76,7 +78,8 @@ export function QuadrantPlayer({ slot, streamId, resolved, delivery, muted, focu
       {videoEl && streamId && resolved && !error && !adActive && (
         <Controls video={videoEl} playerRef={playerRef} audible={!muted} onTakeAudio={onTakeAudio} />
       )}
-      {streamId && !resolved && <div className="msg">Not available via {delivery}</div>}
+      {streamId && !resolved && <div className="msg">{note ?? `Not available via ${DELIVERY_LABEL[delivery]}`}</div>}
+      {!streamId && note && <div className="msg err">{note}</div>}
       {error && <div className="msg err">{error}</div>}
     </>
   )

@@ -1,5 +1,6 @@
 import { SLOT_COUNT } from './state'
 import { toCSV, toJSON, summarize } from './telemetry/metrics'
+import { type CompareRow, bestSlots } from './telemetry/compare'
 import { telemetry } from './telemetry/store'
 import { useTelemetryVersion } from './telemetry/useTelemetry'
 
@@ -17,6 +18,14 @@ export function TelemetryPanel() {
   useTelemetryVersion()
   const events = telemetry.getEvents()
   const now = performance.now()
+  const rows = Array.from({ length: SLOT_COUNT }, (_, slot) => {
+    const summary = summarize(events, slot, now)
+    const first = [...events].reverse().find((e) => e.slot === slot && e.type === 'load-start')
+    return { slot, summary, first }
+  })
+  // When the same stream plays in several quadrants, mark who is ahead on each metric.
+  const best = bestSlots(rows.flatMap((r): CompareRow[] => (r.summary ? [{ slot: r.slot, streamId: r.first?.streamId, summary: r.summary }] : [])))
+  const win = (key: keyof typeof best, slot: number) => (best[key].has(slot) ? 'best' : undefined)
   return (
     <div className="panel">
       <div className="panel-bar">
@@ -34,15 +43,17 @@ export function TelemetryPanel() {
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: SLOT_COUNT }, (_, slot) => {
-            const s = summarize(events, slot, now)
-            const first = [...events].reverse().find((e) => e.slot === slot && e.type === 'load-start')
+          {rows.map(({ slot, summary: s, first }) => {
             return s ? (
               <tr key={slot}>
                 <td>{slot + 1}</td><td>{first?.streamId}</td><td>{first?.delivery}</td>
-                <td>{f(s.startupMs)}</td><td>{f(s.avgBitrateKbps)}</td><td>{s.rebufferCount}</td>
-                <td>{f(s.rebufferRatio * 100, 1)}</td><td>{s.switches}</td>
-                <td>{f(s.meanSegmentLatencyMs)}</td><td>{f(s.throughputKbps)}</td><td>{s.errors}</td>
+                <td className={win('startupMs', slot)}>{f(s.startupMs)}</td>
+                <td className={win('avgBitrateKbps', slot)}>{f(s.avgBitrateKbps)}</td>
+                <td className={win('rebufferCount', slot)}>{s.rebufferCount}</td>
+                <td className={win('rebufferRatio', slot)}>{f(s.rebufferRatio * 100, 1)}</td><td>{s.switches}</td>
+                <td className={win('meanSegmentLatencyMs', slot)}>{f(s.meanSegmentLatencyMs)}</td>
+                <td className={win('throughputKbps', slot)}>{f(s.throughputKbps)}</td>
+                <td className={win('errors', slot)}>{s.errors}</td>
               </tr>
             ) : (
               <tr key={slot}><td>{slot + 1}</td><td colSpan={10}>idle</td></tr>

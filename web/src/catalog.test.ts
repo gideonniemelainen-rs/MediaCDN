@@ -97,13 +97,13 @@ describe('index-driven deliveries', () => {
     const merged = streamsFromIndexes(
       new Map([
         ['local', LOCAL_INDEX],
-        ['s3', { version: 1, titles: [{ id: 'bbb', protocols: ['hls'] }] } as TitleIndex],
+        ['s3-near', { version: 1, titles: [{ id: 'bbb', protocols: ['hls'] }] } as TitleIndex],
       ]),
     )
     const bbb = merged.find((s) => s.id === 'bbb-hls')!
-    expect(Object.keys(bbb.variants).sort()).toEqual(['local', 's3'])
-    expect(merged.find((s) => s.id === 'selftest-hls')!.variants.s3).toBeUndefined()
-    expect(merged.find((s) => s.id === 'bbb-dash')!.variants.s3).toBeUndefined()
+    expect(Object.keys(bbb.variants).sort()).toEqual(['local', 's3-near'])
+    expect(merged.find((s) => s.id === 'selftest-hls')!.variants['s3-near']).toBeUndefined()
+    expect(merged.find((s) => s.id === 'bbb-dash')!.variants['s3-near']).toBeUndefined()
   })
 
   it('puts the cdn-s3 index and media under /s3', () => {
@@ -150,9 +150,11 @@ describe('loadIndex', () => {
   })
 
   it('says which variable to set when a delivery has no base URL', async () => {
-    expect(indexUrl('s3')).toBeUndefined()
-    await loadIndex('s3', false, ok(LOCAL_INDEX))
-    expect(indexStatus('s3')).toEqual({ state: 'error', message: 'no base URL configured (set VITE_S3_BASE)' })
+    expect(indexUrl('s3-near')).toBeUndefined()
+    await loadIndex('s3-near', false, ok(LOCAL_INDEX))
+    expect(indexStatus('s3-near')).toEqual({ state: 'error', message: 'no base URL configured (set VITE_S3_NEAR_BASE)' })
+    await loadIndex('s3-far', false, ok(LOCAL_INDEX))
+    expect(indexStatus('s3-far')).toEqual({ state: 'error', message: 'no base URL configured (set VITE_S3_FAR_BASE)' })
   })
 
   it('does nothing for deliveries without an index', async () => {

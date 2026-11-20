@@ -23,8 +23,20 @@ node --test tools/                                   # live-simulation unit test
 node pipeline/bin/ingest.mjs <file> [--id slug]      # validate + normalise an upload -> pipeline/work/<key>/
 node --test pipeline/                                # pipeline unit + end-to-end tests (needs ffmpeg)
 node pipeline/bin/serve.mjs                          # upload server on :8790; then open /upload/ in the dev server
-cd web && npm run dev                                # player; pick Delivery = local
+cd web && npm run dev                                # player; each quadrant picks its own delivery
 ```
-- Delivery `local` offers `<id>-hls`, `<id>-dash` and `live-<id>` (looped HLS live) for each packaged title.
+- Each quadrant has its own Delivery picker, so one title can be compared across sources side by side (the "compare deliveries" preset loads Big Buck Bunny from the local origin, both S3 buckets and Media CDN). The telemetry table marks the best value per metric when the same stream plays in several quadrants.
+- Deliveries and the `web/.env.local` variable each one reads:
+
+| Delivery | Meaning | Variable |
+| --- | --- | --- |
+| `direct` | public third-party URL | none |
+| `local` | packaged origin on this machine | `VITE_LOCAL_BASE` (default `http://localhost:8788`) |
+| `s3-near` | S3 bucket close to you, no CDN | `VITE_S3_NEAR_BASE` (falls back to the older `VITE_S3_BASE`) |
+| `s3-far` | the same content in a distant bucket | `VITE_S3_FAR_BASE` |
+| `cdn-public` | Media CDN in front of a public origin | `VITE_CDN_BASE` |
+| `cdn-s3` | Media CDN in front of S3 | `VITE_CDN_BASE` |
+
+- Delivery `local` offers `<id>-hls`, `<id>-dash` and `live-<id>` (looped HLS live) for each packaged title. The S3 deliveries and `cdn-s3` offer the HLS and DASH copies listed in their `index.json`. A quadrant whose source is not configured says which variable to set.
 - Simulated live is HLS only: DASH would need a new Period per loop because the media timestamps restart.
 - Content is CC BY; see `docs/sources.md` for attribution.
