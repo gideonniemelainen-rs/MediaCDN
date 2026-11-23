@@ -12,13 +12,20 @@ export function summarise(job) {
   return { id: job.id, name: job.meta.name, status: job.status, createdAt: job.createdAt, outputId: job.meta.outputId, bytes: job.meta.bytes }
 }
 
-/** What a client may see of a job: no filesystem paths. */
+/** What a client may see of a job: no filesystem paths and no owner id. */
 export const publicJob = (job) => {
-  const { source: _source, ...meta } = job.meta
+  const { source: _source, userId: _userId, ...meta } = job.meta
   return { ...job, meta }
 }
 
-export async function createJobManager({ work, steps, now = Date.now }) {
+/** Changes worth recording: a stage or the job changing state, not progress ticks. */
+const signature = (job) => `${job.status}|${job.stages.map((s) => s.status).join(',')}`
+
+/**
+ * `onChange(job)` (optional, may be async) is called when a job's state changes, in order per job.
+ * It is for history storage: a failure is logged and never affects the job.
+ */
+export async function createJobManager({ work, steps, now = Date.now, onChange }) {
   const dir = join(work, 'jobs')
   await mkdir(dir, { recursive: true })
   const jobs = new Map()
@@ -42,9 +49,23 @@ export async function createJobManager({ work, steps, now = Date.now }) {
       })
   }
 
+  const signed = new Map()
+  const syncing = new Map()
+  function notify(job) {
+    if (!onChange) return
+    const sig = signature(job)
+    if (signed.get(job.id) === sig) return
+    signed.set(job.id, sig)
+    const run = (syncing.get(job.id) ?? Promise.resolve())
+      .then(() => onChange(job))
+      .catch((e) => console.error(`history: could not record job ${job.id}: ${e.message}`))
+    syncing.set(job.id, run)
+  }
+
   function publish(job) {
     jobs.set(job.id, job)
     persist(job)
+    notify(job)
     for (const fn of subs.get(job.id) ?? []) fn(job)
   }
 
@@ -74,7 +95,9 @@ export async function createJobManager({ work, steps, now = Date.now }) {
 
   return {
     get: (id) => jobs.get(id),
-    list: () => [...jobs.values()].sort((a, b) => b.createdAt - a.createdAt).map(summarise),
+    /** Every job, oldest first (for the startup backfill). */
+    all: () => [...jobs.values()].sort((a, b) => a.createdAt - b.createdAt),
+    list: (visible = () => true) => [...jobs.values()].filter(visible).sort((a, b) => b.createdAt - a.createdAt).map(summarise),
 
     subscribe(id, fn) {
       if (!subs.has(id)) subs.set(id, new Set())
@@ -93,7 +116,10 @@ export async function createJobManager({ work, steps, now = Date.now }) {
       return job
     },
 
-    /** Resolves when every queued job has finished (for tests). */
-    idle: () => tail,
+    /** Resolves when every queued job has finished and its history writes have landed (for tests). */
+    idle: async () => {
+      await tail
+      await Promise.all(syncing.values())
+    },
   }
 }

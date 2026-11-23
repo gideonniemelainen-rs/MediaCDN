@@ -70,3 +70,38 @@ html, body, #root { height: 100%; margin: 0; background: #111; color: #eee; font
 .auth-note { color: #999; }
 
 .catalog-status { display: flex; flex-wrap: wrap; gap: 2px 14px; flex: 1; min-width: 0; }
+
+.analysis { flex: 1; overflow: auto; max-width: 1100px; width: 100%; margin: 0 auto; padding: 32px 24px; box-sizing: border-box; }
+.analysis h1 { margin: 0 0 24px; font-size: 28px; letter-spacing: -.02em; color: #fff; }
+.analysis h2 { margin: 0 0 12px; font-size: 16px; color: #ddd; }
+.analysis section { margin-bottom: 36px; }
+.analysis .muted { color: #888; font-size: 14px; margin: 0; }
+.analysis button { cursor: pointer; }
+.analysis .more { margin-top: 12px; padding: 7px 14px; border-radius: 8px; border: 1px solid #333; background: #1b1b1b; color: #ddd; }
+.analysis .more:hover { border-color: #555; }
+table.history { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.history th { text-align: left; font-weight: 500; color: #888; padding: 6px 10px; border-bottom: 1px solid #2a2a2a; }
+table.history td { padding: 9px 10px; border-bottom: 1px solid #1f1f1f; }
+table.history .num { text-align: right; font-variant-numeric: tabular-nums; }
+table.history .name { max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+table.history a { color: #7ab7ff; text-decoration: none; }
+table.history a:hover { text-decoration: underline; }
+.pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; background: #2a2a2a; color: #bbb; }
+.pill.success { background: #12301a; color: #3fb950; }
+.pill.failed { background: #3a1616; color: #ff7b7b; }
+.pill.running { background: #12263a; color: #4ea1ff; }
+.code { margin-left: 8px; font: 11px ui-monospace, monospace; color: #ff9f9f; }
+
+.panel-save { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.panel-save input { width: 150px; }
+.panel-save a, .topnav .whoami a { color: #7ab7ff; text-decoration: none; }
+.panel-save a:hover, .topnav .whoami a:hover { text-decoration: underline; }
+table.history td.actions { white-space: nowrap; text-align: right; }
+table.history td.actions button { margin-left: 6px; padding: 3px 10px; border-radius: 6px; border: 1px solid #333; background: #1b1b1b; color: #ddd; font-size: 12px; }
+table.history td.actions button:hover { border-color: #555; }
+table.history td.actions button.danger:hover { border-color: #a33; color: #ff8a80; }
+table.history tr.detail-row td { padding: 0 10px 14px; border-bottom: 1px solid #2a2a2a; }
+.run-panel { max-height: none; margin-top: 6px; border-radius: 8px; padding: 6px 10px; }
+.run-detail .muted { margin-top: 8px; font-size: 12px; }
+.play-blocked { padding: 8px 16px; border: 1px solid #4ea1ff; border-radius: 8px; background: rgba(78,161,255,.12); color: #cfe6ff; font-size: 14px; cursor: pointer; }
+.play-blocked:hover { background: rgba(78,161,255,.25); }

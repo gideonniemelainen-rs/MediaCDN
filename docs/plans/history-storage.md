@@ -1,6 +1,6 @@
 # Postgres store for auth, upload history and benchmark runs
 
-Status: milestone 1 built (2026-11-23): Postgres in compose, migrations, schema, auth routes, seeded admin, login gate and navbar user menu. Unit and server tests pass against the compose db; not yet run end to end in a browser. Milestones 2 to 4 not started.
+Status: milestones 1 to 3 built (2026-11-23). M1: Postgres in compose, migrations, schema, auth, seeded admin, login gate. M2: job state changes recorded in `uploads` and `upload_stages`, per-user `/jobs` and `/uploads`, Analysis uploads table. M3: "Save run" in the telemetry panel posts the current quadrants' summaries and events to `POST /benchmarks` (one transaction: run, per-quadrant columns, `telemetry-events` blob thinned to 5 MB by dropping periodic samples if needed); `GET /benchmarks`, `/benchmarks/:id`, `/benchmarks/:id/artifacts/:kind` and `DELETE` are per user; the Analysis page lists runs and rebuilds each comparison from its stored blob with the same `summarize` the live panel uses. Server and web tests pass; M3 not yet walked through in a browser. Milestone 4 (charts) not started.
 
 ## Context
 

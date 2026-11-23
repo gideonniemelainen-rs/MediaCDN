@@ -143,6 +143,8 @@ function Result({ stage }: { stage: Stage }) {
 export function StageDetails({ stage, now }: { stage: Stage; now: number }) {
   const t = stageElapsed(stage, now)
   const failure = stage.status === 'failed' ? (stage.result as { code?: string } | null)?.code : undefined
+  // A failed validate lists its errors below, so repeating the first one as the summary says it twice.
+  const errorsListed = stage.id === 'validate' && ((stage.result as { errors?: unknown[] } | null)?.errors?.length ?? 0) > 0
   return (
     <section className="detail" aria-label={`${stage.label} details`}>
       <header className="detail-head">
@@ -151,7 +153,7 @@ export function StageDetails({ stage, now }: { stage: Stage; now: number }) {
         {t !== null && <span className="muted">{formatDuration(t)}</span>}
         {stage.status === 'running' && stage.progress !== null && <span className="muted">{Math.round(stage.progress * 100)}%</span>}
       </header>
-      {stage.summary && <p className={stage.status === 'failed' ? 'note bad' : 'summary'}>{failure && <code>{failure}</code>} {stage.summary}</p>}
+      {stage.summary && !errorsListed && <p className={stage.status === 'failed' ? 'note bad' : 'summary'}>{failure && <code>{failure}</code>} {stage.summary}</p>}
       {stage.status === 'queued' && <p className="muted">Waiting for earlier stages.</p>}
       {stage.status === 'skipped' && <p className="muted">Skipped because an earlier stage failed.</p>}
       <Result stage={stage} />

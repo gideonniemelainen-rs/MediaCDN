@@ -30,11 +30,14 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
   // wiped and attach() never settles (the quadrant stays black).
   const teardown = useRef<Promise<unknown>>(Promise.resolve())
   const [error, setError] = useState<string | null>(null)
+  // Browsers refuse to start audible playback before the user has interacted with the page.
+  const [blocked, setBlocked] = useState(false)
   const url = resolved?.url
   const mimeType = resolved?.mimeType
 
   useEffect(() => {
     setError(null)
+    setBlocked(false)
     const video = videoRef.current
     if (!video || !streamId || !url) return
     shaka.polyfill.installAll()
@@ -53,8 +56,10 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
         return player.load(url, null, mimeType)
       })
       .then(() => (cancelled ? undefined : video.play()))
-      .catch((e: { code?: number; message?: string }) => {
-        if (!cancelled) setError(`Shaka error ${e.code ?? ''} ${e.message ?? ''}`.trim())
+      .catch((e: { name?: string; code?: number; message?: string }) => {
+        if (cancelled) return
+        if (e.name === 'NotAllowedError') setBlocked(true)
+        else setError(`Shaka error ${e.code ?? ''} ${e.message ?? ''}`.trim())
       })
     return () => {
       cancelled = true
@@ -85,6 +90,13 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
       )}
       {streamId && !resolved && <div className="msg">{note ?? `Not available via ${DELIVERY_LABEL[delivery]}`}</div>}
       {!streamId && note && <div className="msg err">{note}</div>}
+      {blocked && !error && (
+        <div className="msg">
+          <button type="button" className="play-blocked" onClick={() => void videoEl?.play().then(() => setBlocked(false), () => {})}>
+            ▶ Click to play
+          </button>
+        </div>
+      )}
       {error && <div className="msg err">{error}</div>}
     </>
   )

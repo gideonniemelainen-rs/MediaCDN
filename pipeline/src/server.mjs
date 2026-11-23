@@ -3,8 +3,11 @@
 //   POST /auth/login        {username, password} -> session cookie (and token); /auth/logout, /auth/password
 //   GET  /auth/me           the signed-in user
 //   POST /uploads           raw video body, X-Filename header; starts a job
-//   GET  /jobs, /jobs/:id   job summaries, one job snapshot
+//   GET  /jobs, /jobs/:id   job summaries, one job snapshot (your own; an admin sees all)
 //   GET  /jobs/:id/events   server-sent events: the current snapshot, then every change
+//   GET  /uploads, /uploads/:id   upload history from the database (needs `history`)
+//   POST /benchmarks        save a benchmark run; GET /benchmarks, /benchmarks/:id,
+//                           /benchmarks/:id/artifacts/:kind; DELETE /benchmarks/:id (all yours; admin: all)
 // With `auth` given (always, outside tests) everything except /health and the login route needs a session.
 // It runs ffmpeg on whatever it is sent, so it only answers to localhost and to the dev server's
 // origin, sends no CORS headers (a cross-site page cannot reach it) and binds to loopback.
@@ -16,6 +19,7 @@ import { join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { MIN_PASSWORD, clearCookie, createRateLimiter, newToken, sessionCookie, tokenFrom, verifyPassword } from './auth.mjs'
+import { parseRun } from './benchmarks.mjs'
 import { createJobManager, isTerminal, publicJob } from './jobs.mjs'
 import { slugify } from './job.mjs'
 import { STAGES } from './stages.mjs'
@@ -50,10 +54,13 @@ export function decodeName(header) {
   return name.split(/[\\/]/).pop().slice(0, 200) || 'upload'
 }
 
+/** A saved run carries its telemetry events, so its body is far larger than a login. */
+const BENCHMARK_BODY_MAX = 10_000_000
 const DUMMY_HASH = `scrypt$16384$8$1$${'A'.repeat(22)}==$${'A'.repeat(43)}=`
 const publicUser = (u) => ({ id: u.id, username: u.username, role: u.role, mustChangePassword: u.mustChangePassword })
 
 async function readJson(req, max = 4096) {
+  req.setEncoding('utf8')
   let body = ''
   for await (const chunk of req) {
     body += chunk
@@ -70,13 +77,25 @@ async function readJson(req, max = 4096) {
  * `auth` is `{ users, sessions, limiter?, dbStatus? }` (repos from src/db). Without it the server is open,
  * which only the unit tests that predate auth rely on.
  */
-export async function createPipelineServer({ work, origin, profile, steps, auth, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
+/** Whether `user` may see `job`. Without auth everything is visible; jobs from before accounts have no owner and are the admin's. */
+export const canSee = (user, job) => !user || user.role === 'admin' || job.meta.userId === user.id
+
+/**
+ * `history` is `{ uploads, benchmarks }` (the repos from src/db). With it, every job state change is
+ * recorded, and jobs already on disk are recorded once at startup.
+ */
+export async function createPipelineServer({ work, origin, profile, steps, auth, history, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
   const limiter = auth?.limiter ?? createRateLimiter()
-  const manager = await createJobManager({ work, steps, now })
+  const manager = await createJobManager({ work, steps, now, onChange: history && ((job) => history.uploads.upsert(job)) })
+  if (history) {
+    for (const job of manager.all()) {
+      await history.uploads.upsert(job).catch((e) => console.error(`history: could not record job ${job.id}: ${e.message}`))
+    }
+  }
   const maxBytes = profile.limits.maxFileBytes
   const uploads = join(work, 'uploads')
 
-  async function handleUpload(req, res) {
+  async function handleUpload(req, res, user) {
     const length = Number(req.headers['content-length'])
     if (!Number.isFinite(length) || length <= 0) return json(res, 411, { error: 'Content-Length required' })
     if (length > maxBytes) return json(res, 413, { error: `file is over the ${maxBytes} byte limit` })
@@ -112,7 +131,7 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
     const sha256 = hash.digest('hex')
     const outputId = await outputIdFor(origin, slugify(name), sha256)
     const seconds = Math.max((endedAt - startedAt) / 1000, 0.001)
-    const meta = { uploadId, name, bytes, sha256, outputId, source: file }
+    const meta = { uploadId, name, bytes, sha256, outputId, source: file, ...(user ? { userId: user.id } : {}) }
     manager.create({
       id: uploadId,
       meta,
@@ -154,6 +173,46 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
     await auth.users.setPassword(user.id, next)
     await auth.sessions.destroyOthers(user.id, token)
     json(res, 200, { user: { ...publicUser(user), mustChangePassword: false } })
+  }
+
+  async function handleHistory(res, path, url, user) {
+    if (!history) return json(res, 404, { error: 'not found' })
+    if (path === '/uploads') {
+      return json(res, 200, await history.uploads.list(user, { before: url.searchParams.get('before'), limit: url.searchParams.get('limit') }))
+    }
+    const m = /^\/uploads\/([0-9a-f]{8})$/.exec(path)
+    const upload = m && (await history.uploads.get(user, m[1]))
+    return upload ? json(res, 200, upload) : json(res, 404, { error: 'not found' })
+  }
+
+  async function handleBenchmarks(req, res, path, url, user) {
+    const repo = history?.benchmarks
+    if (!repo || !user) return json(res, 404, { error: 'not found' })
+    const notFound = () => json(res, 404, { error: 'not found' })
+
+    if (path === '/benchmarks') {
+      if (req.method === 'GET') {
+        return json(res, 200, await repo.list(user, { before: url.searchParams.get('before'), limit: url.searchParams.get('limit') }))
+      }
+      if (req.method === 'POST') {
+        const run = parseRun(await readJson(req, BENCHMARK_BODY_MAX))
+        return json(res, 201, { id: await repo.create(user.id, run) })
+      }
+      return json(res, 405, { error: 'method not allowed' })
+    }
+    const m = /^\/benchmarks\/([0-9a-f-]{36})(?:\/artifacts\/([a-z-]{1,40}))?$/.exec(path)
+    if (!m) return notFound()
+    if (m[2]) {
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })
+      const blob = await repo.getArtifact(user, m[1], m[2])
+      return blob ? json(res, 200, { schemaVersion: blob.schemaVersion, ...blob.json }) : notFound()
+    }
+    if (req.method === 'GET') {
+      const run = await repo.get(user, m[1])
+      return run ? json(res, 200, run) : notFound()
+    }
+    if (req.method === 'DELETE') return (await repo.remove(user, m[1])) ? json(res, 200, { ok: true }) : notFound()
+    return json(res, 405, { error: 'method not allowed' })
   }
 
   function handleEvents(req, res, job) {
@@ -213,15 +272,18 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
         if (path === '/auth/password' && req.method === 'POST') return await handlePassword(req, res, user, token)
       }
 
-      if (req.method === 'POST' && path === '/uploads') return await handleUpload(req, res)
+      if (path === '/benchmarks' || path.startsWith('/benchmarks/')) return await handleBenchmarks(req, res, path, url, user)
+      if (req.method === 'POST' && path === '/uploads') return await handleUpload(req, res, user)
       if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })
 
       // The graph the UI draws while a file is still uploading, before any job exists.
       if (path === '/stages') return json(res, 200, { stages: STAGES })
-      if (path === '/jobs') return json(res, 200, { jobs: manager.list() })
+      if (path === '/jobs') return json(res, 200, { jobs: manager.list((job) => canSee(user, job)) })
+      if (path === '/uploads' || path.startsWith('/uploads/')) return await handleHistory(res, path, url, user)
       const m = /^\/jobs\/([0-9a-f]{8})(\/events)?$/.exec(path)
       const job = m && manager.get(m[1])
-      if (!job) return json(res, 404, { error: 'not found' })
+      // Someone else's job is reported as missing, not forbidden, so ids cannot be probed.
+      if (!job || !canSee(user, job)) return json(res, 404, { error: 'not found' })
       if (m[2]) return handleEvents(req, res, job)
       return json(res, 200, publicJob(job))
     } catch (e) {

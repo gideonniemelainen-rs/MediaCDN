@@ -9,6 +9,8 @@ import { join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { checkDb, createPool } from '../src/db/pool.mjs'
 import { migrate } from '../src/db/migrate.mjs'
+import { createBenchmarks } from '../src/db/benchmarks.mjs'
+import { createUploads } from '../src/db/uploads.mjs'
 import { createSessions } from '../src/db/sessions.mjs'
 import { createUsers, seedAdmin } from '../src/db/users.mjs'
 import { DEFAULT_ORIGINS, createPipelineServer } from '../src/server.mjs'
@@ -42,7 +44,12 @@ if (admin?.mustChangePassword) console.warn('WARNING: the admin account still ha
 await sessions.purgeExpired()
 
 const auth = { users, sessions, dbStatus: () => checkDb(pool) }
-const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, allowedOrigins })
+// Jobs from before accounts existed have no owner; they belong to admin.
+const history = {
+  benchmarks: createBenchmarks(pool),
+  uploads: createUploads(pool, { fallbackUserId: async () => (await users.findByName('admin'))?.id ?? null }),
+}
+const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, allowedOrigins })
 
 server.listen(opts.port, '127.0.0.1', () => {
   console.log(`pipeline on http://127.0.0.1:${opts.port}/api/pipeline  (work ${opts.work}, origin ${opts.origin})`)

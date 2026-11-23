@@ -21,6 +21,11 @@ export default function NavBar({ current }: { current: RouteId }) {
             </a>
           ))}
         </nav>
+        {auth.status === 'signedOut' && (
+          <div className="whoami">
+            <a href="/analysis/">Sign in</a>
+          </div>
+        )}
         {user && (
           <div className="whoami">
             <span>{user.username}</span>

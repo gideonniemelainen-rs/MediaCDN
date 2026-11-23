@@ -1,6 +1,11 @@
+import { useState } from 'react'
+import shaka from 'shaka-player'
+import { useAuth } from './auth/useAuth'
+import { saveRun } from './history/api'
+import { buildRunPayload } from './history/run'
 import { SLOT_COUNT } from './state'
 import { toCSV, toJSON, summarize } from './telemetry/metrics'
-import { type CompareRow, bestSlots } from './telemetry/compare'
+import { SummaryTable } from './telemetry/SummaryTable'
 import { telemetry } from './telemetry/store'
 import { useTelemetryVersion } from './telemetry/useTelemetry'
 
@@ -12,20 +17,41 @@ function download(name: string, text: string, type: string) {
   URL.revokeObjectURL(a.href)
 }
 
-const f = (v: number | null, d = 0) => (v === null ? '-' : v.toFixed(d))
+type Saved = { state: 'idle' } | { state: 'saving' } | { state: 'saved' } | { state: 'error'; message: string }
 
 export function TelemetryPanel() {
   useTelemetryVersion()
+  const auth = useAuth()
+  const [label, setLabel] = useState('')
+  const [saved, setSaved] = useState<Saved>({ state: 'idle' })
   const events = telemetry.getEvents()
   const now = performance.now()
   const rows = Array.from({ length: SLOT_COUNT }, (_, slot) => {
     const summary = summarize(events, slot, now)
     const first = [...events].reverse().find((e) => e.slot === slot && e.type === 'load-start')
-    return { slot, summary, first }
+    return { slot, summary, streamId: first?.streamId, delivery: first?.delivery }
   })
-  // When the same stream plays in several quadrants, mark who is ahead on each metric.
-  const best = bestSlots(rows.flatMap((r): CompareRow[] => (r.summary ? [{ slot: r.slot, streamId: r.first?.streamId, summary: r.summary }] : [])))
-  const win = (key: keyof typeof best, slot: number) => (best[key].has(slot) ? 'best' : undefined)
+  const hasRun = rows.some((r) => r.summary)
+
+  async function save() {
+    const payload = buildRunPayload({
+      events: telemetry.getEvents(),
+      now: performance.now(),
+      timeOrigin: performance.timeOrigin,
+      label,
+      env: { userAgent: navigator.userAgent, shaka: shaka.Player.version },
+    })
+    if (!payload) return
+    setSaved({ state: 'saving' })
+    try {
+      await saveRun(payload)
+      setSaved({ state: 'saved' })
+      setLabel('')
+    } catch (e) {
+      setSaved({ state: 'error', message: e instanceof Error ? e.message : String(e) })
+    }
+  }
+
   return (
     <div className="panel">
       <div className="panel-bar">
@@ -34,33 +60,28 @@ export function TelemetryPanel() {
         <button onClick={() => download('telemetry.csv', toCSV(events), 'text/csv')}>CSV</button>
         <button onClick={() => telemetry.clear()}>Clear</button>
         <span>{events.length} events</span>
+        <span className="panel-save">
+          {auth.status === 'signedIn' ? (
+            <>
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="label (optional)"
+                aria-label="Run label"
+                maxLength={120}
+              />
+              <button onClick={() => void save()} disabled={!hasRun || saved.state === 'saving'}>
+                {saved.state === 'saving' ? 'Saving…' : 'Save run'}
+              </button>
+            </>
+          ) : (
+            <a href="/analysis/">Sign in to save runs</a>
+          )}
+          {saved.state === 'saved' && <span role="status">Saved. <a href="/analysis/">View in Analysis</a></span>}
+          {saved.state === 'error' && <span className="error" role="alert">{saved.message}</span>}
+        </span>
       </div>
-      <table>
-        <thead>
-          <tr>
-            <th>slot</th><th>stream</th><th>delivery</th><th>startup ms</th><th>kbps avg</th>
-            <th>rebuf</th><th>rebuf %</th><th>switches</th><th>seg ms</th><th>kbps net</th><th>err</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ slot, summary: s, first }) => {
-            return s ? (
-              <tr key={slot}>
-                <td>{slot + 1}</td><td>{first?.streamId}</td><td>{first?.delivery}</td>
-                <td className={win('startupMs', slot)}>{f(s.startupMs)}</td>
-                <td className={win('avgBitrateKbps', slot)}>{f(s.avgBitrateKbps)}</td>
-                <td className={win('rebufferCount', slot)}>{s.rebufferCount}</td>
-                <td className={win('rebufferRatio', slot)}>{f(s.rebufferRatio * 100, 1)}</td><td>{s.switches}</td>
-                <td className={win('meanSegmentLatencyMs', slot)}>{f(s.meanSegmentLatencyMs)}</td>
-                <td className={win('throughputKbps', slot)}>{f(s.throughputKbps)}</td>
-                <td className={win('errors', slot)}>{s.errors}</td>
-              </tr>
-            ) : (
-              <tr key={slot}><td>{slot + 1}</td><td colSpan={10}>idle</td></tr>
-            )
-          })}
-        </tbody>
-      </table>
+      <SummaryTable rows={rows} />
     </div>
   )
 }
