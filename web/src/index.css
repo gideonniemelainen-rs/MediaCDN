@@ -1,3 +1,4 @@
+html { color-scheme: dark; }
 html, body, #root { height: 100%; margin: 0; background: #111; color: #eee; font-family: system-ui, sans-serif; font-size: 13px; }
 .app { display: flex; flex-direction: column; height: 100%; }
 .bar { display: flex; gap: 10px; align-items: center; padding: 6px; background: #1b1b1b; }
@@ -65,5 +66,7 @@ html, body, #root { height: 100%; margin: 0; background: #111; color: #eee; font
 .auth-card input:focus-visible { outline: 2px solid #4ea1ff; outline-offset: 1px; }
 .auth-card button { padding: 10px; border: 0; border-radius: 8px; background: #4ea1ff; color: #06121f; font-size: 14px; font-weight: 600; cursor: pointer; }
 .auth-card button:disabled { opacity: .6; cursor: default; }
-.auth-error { color: #ff8a80; font-size: 13px; }
+.auth-card .auth-error, .auth-error { color: #ff8a80; font-size: 13px; }
 .auth-note { color: #999; }
+
+.catalog-status { display: flex; flex-wrap: wrap; gap: 2px 14px; flex: 1; min-width: 0; }

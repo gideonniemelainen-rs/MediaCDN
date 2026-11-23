@@ -25,6 +25,10 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const playerRef = useRef<shaka.Player | null>(null)
+  // The video element outlives each player, and a player's destroy() resets the element after it
+  // resolves. A new player must not attach until the previous one is gone, or its MediaSource is
+  // wiped and attach() never settles (the quadrant stays black).
+  const teardown = useRef<Promise<unknown>>(Promise.resolve())
   const [error, setError] = useState<string | null>(null)
   const url = resolved?.url
   const mimeType = resolved?.mimeType
@@ -39,8 +43,9 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
     const ctx = { slot, streamId, delivery }
     let cancelled = false
     let detach = () => {}
-    player
-      .attach(video)
+    const previous = teardown.current
+    previous
+      .then(() => (cancelled ? undefined : player.attach(video)))
       .then(() => {
         if (cancelled) return
         detach = attachTelemetry(player, video, ctx)
@@ -55,7 +60,7 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
       cancelled = true
       detach()
       playerRef.current = null
-      void player.destroy()
+      teardown.current = previous.then(() => player.destroy()).catch(() => {})
     }
   }, [slot, streamId, url, mimeType, delivery])
 
