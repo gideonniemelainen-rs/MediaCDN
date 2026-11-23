@@ -46,6 +46,8 @@ RUN set -eux; \
     packager --version
 
 WORKDIR /app
+COPY package.json ./
+RUN npm install --omit=dev --no-audit --no-fund
 COPY bin ./bin
 COPY src ./src
 COPY profiles ./profiles

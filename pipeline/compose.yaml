@@ -7,6 +7,24 @@ services:
       - ./work:/app/work
       - ../media/src:/in:ro
 
+  # Postgres for auth, upload history and benchmark runs: docker compose -f pipeline/compose.yaml up -d db
+  # Published on loopback only. The credentials are a local default, not for anything shared.
+  db:
+    image: postgres:17.6
+    environment:
+      POSTGRES_USER: mediacdn
+      POSTGRES_PASSWORD: mediacdn
+      POSTGRES_DB: mediacdn
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mediacdn"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   minio:
     profiles: [publish]
     image: minio/minio
@@ -18,4 +36,5 @@ services:
       - minio-data:/data
 
 volumes:
+  pg-data:
   minio-data:

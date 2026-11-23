@@ -22,7 +22,9 @@ node tools/smoke-origin.mjs <id>                     # smoke-test the origin
 node --test tools/                                   # live-simulation unit tests
 node pipeline/bin/ingest.mjs <file> [--id slug]      # validate + normalise an upload -> pipeline/work/<key>/
 node --test pipeline/                                # pipeline unit + end-to-end tests (needs ffmpeg)
-node pipeline/bin/serve.mjs                          # upload server on :8790; then open /upload/ in the dev server
+docker compose -f pipeline/compose.yaml up -d db     # Postgres for accounts and history (once per boot)
+(cd pipeline && npm install)                         # once: the pg driver
+node pipeline/bin/serve.mjs                          # upload + auth API on :8790; sign in as admin / admin (first start), then open /upload/
 cd web && npm run dev                                # player; each quadrant picks its own delivery
 ```
 - Each quadrant has its own Delivery picker, so one title can be compared across sources side by side (the "compare deliveries" preset loads Big Buck Bunny from the local origin, both S3 buckets and Media CDN). The telemetry table marks the best value per metric when the same stream plays in several quadrants.

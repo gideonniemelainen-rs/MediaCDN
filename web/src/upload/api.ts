@@ -1,10 +1,12 @@
 // Client for the pipeline server (pipeline/bin/serve.mjs), reached through the Vite proxy.
+import { sessionEnded } from '../auth/store'
 import type { Job, JobSummary, StageDef } from './types'
 
 const BASE = '/api/pipeline'
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { cache: 'no-store' })
+  if (res.status === 401) sessionEnded()
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
   return res.json() as Promise<T>
 }
@@ -32,6 +34,7 @@ export function uploadFile(file: File, onProgress: (loaded: number, total: numbe
       try {
         body = JSON.parse(xhr.responseText)
       } catch {}
+      if (xhr.status === 401) sessionEnded()
       if (xhr.status === 202 && body.id) resolve({ id: body.id })
       else reject(new Error(body.error ?? `upload failed (${xhr.status})`))
     }
