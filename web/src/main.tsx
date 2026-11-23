@@ -3,9 +3,11 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import UploadPage from './upload/UploadPage.tsx'
+import AnalysisPage from './AnalysisPage.tsx'
+import { routeFor } from './routes.ts'
 
-// There is no router: the player is `/` and the upload page is `/upload/`.
-const Page = /^\/upload\/?$/.test(window.location.pathname) ? UploadPage : App
+const PAGES = { player: App, upload: UploadPage, analysis: AnalysisPage }
+const Page = PAGES[routeFor(window.location.pathname)]
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

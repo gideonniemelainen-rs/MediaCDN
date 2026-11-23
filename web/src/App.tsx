@@ -11,6 +11,7 @@ import { SLOT_COUNT, initialState, isMuted, isStreamMuted, pickAdSlot, reducer }
 import { readLaunch } from './launch'
 import { BenchPanel } from './BenchPanel'
 import { TelemetryPanel } from './TelemetryPanel'
+import NavBar from './NavBar'
 import './index.css'
 
 // Fixed layouts so repeated runs are comparable. Entries are title groups or 'live'; each resolves
@@ -90,8 +91,8 @@ export default function App() {
 
   return (
     <div className="app">
+      <NavBar current="player" />
       <header className="bar">
-        <a className="nav-link" href="/upload/">Upload</a>
         <span className="catalog-status">
           {indexed.map((d) => {
             const st = statusOf(d)

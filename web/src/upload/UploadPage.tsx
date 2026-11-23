@@ -7,6 +7,7 @@ import { ResultPlayer } from './ResultPlayer'
 import { StageDetails } from './StageDetails'
 import type { JobSummary, PublishResult, Stage, StageDef } from './types'
 import { WorkflowGraph } from './WorkflowGraph'
+import NavBar from '../NavBar'
 import './upload.css'
 
 interface Uploading { name: string; startedAt: number; loaded: number; total: number }
@@ -101,9 +102,8 @@ export default function UploadPage() {
 
   return (
     <div className="upload-page">
+      <NavBar current="upload" />
       <header className="bar">
-        <a className="nav-link" href="/">← Player</a>
-        <strong>Upload</strong>
         <span className={`health ${health}`}>
           {health === 'checking' && 'connecting to pipeline…'}
           {health === 'up' && 'pipeline connected'}
