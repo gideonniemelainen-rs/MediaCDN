@@ -36,7 +36,7 @@ export function chooseOutputId(slug, sha, existing) {
 const attr = (line, name) => new RegExp(`${name}=("([^"]*)"|[^,]*)`).exec(line)?.[2] ?? new RegExp(`${name}=([^,]*)`).exec(line)?.[1]
 
 /** Structural checks of a packaged title: `files` are the names in its directory, `playlists` maps name to text. */
-export function verifyPackage({ id, files, master, playlists }) {
+export function verifyPackage({ id, files, master, playlists, mpd }) {
   const names = new Set(files)
   const lines = master.split(/\r?\n/)
   const variants = lines.filter((l) => l.startsWith('#EXT-X-STREAM-INF:'))
@@ -71,6 +71,9 @@ export function verifyPackage({ id, files, master, playlists }) {
     }
   }
   check('All segments present', Object.keys(playlists).length > 0 && lost.length === 0, lost.length ? `missing ${lost.slice(0, 3).join(', ')}` : `${segments} segments`)
+  // Not a live window: a finished upload must be a complete, seekable title in both formats.
+  check('HLS playlists are complete (VOD)', Object.keys(playlists).length > 0 && Object.values(playlists).every((t) => t.includes('#EXT-X-ENDLIST')))
+  if (mpd !== undefined) check('DASH manifest is static', /\btype="static"/.test(mpd))
   check('Segment length', longest > 0 && longest <= MAX_SEGMENT_SECONDS, `longest ${longest.toFixed(1)} s`)
 
   const listed = buildIndex([{ slug: id, files }]).titles[0]

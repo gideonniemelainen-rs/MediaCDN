@@ -12,7 +12,7 @@ See `docs/` for architecture and decisions.
 - `pipeline/` UGC transcoding pipeline (ffmpeg + Shaka Packager) and its local upload server; see `docs/plans/transcoding-pipeline.md` and `docs/plans/upload-page.md`
 
 ## Local workflow
-Everything at once: `bash scripts/dev.sh` starts the database, origin, upload/auth server and Vite, reuses anything already running, and stops what it started on Ctrl-C (`--stop-db` also stops Postgres, `--no-origin` skips the origin). The individual commands:
+Everything at once: `bash scripts/dev.sh` starts the database, origin, upload/auth server and Vite, reuses anything already running, and stops what it started on Ctrl-C (`--stop-db` also stops Postgres, `--no-origin` skips the origin). `PIPELINE_PACKAGER=shaka bash scripts/dev.sh` packages uploads with Shaka Packager in the worker image (needs Docker; see `pipeline/README.md`). The individual commands:
 ```
 brew install ffmpeg                                  # once
 node scripts/probe-sources.mjs                       # check the public sources

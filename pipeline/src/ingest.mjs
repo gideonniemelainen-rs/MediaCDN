@@ -60,6 +60,12 @@ export function parseProgressLine(line, durationSec) {
   return null
 }
 
+/**
+ * The rest of ffmpeg's `-progress` key=value block (`bitrate=   0.1kbits/s`, `speed=N/A`, `fps=0.00`).
+ * ffmpeg pads some values with spaces, so these are not single tokens; none of them belong in a log.
+ */
+export const isProgressNoise = (line) => /^[a-z_0-9]+=\s*\S*$/.test(line)
+
 /** Runs the normalise plan, reporting progress. Resolves with the plan (its `decisions` are recorded). */
 export function normaliseFile({ file, info, profile, output, onProgress }) {
   const plan = planNormalise(info, profile, { input: file, output })

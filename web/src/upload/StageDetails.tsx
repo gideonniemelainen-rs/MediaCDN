@@ -93,7 +93,7 @@ function Package({ r }: { r: PackageResult }) {
           ))}
         </tbody>
       </table>
-      <Rows rows={[['Output size', formatBytes(r.bytes)]]} />
+      <Rows rows={[['Packager', r.packager === 'shaka' ? 'Shaka Packager (CMAF)' : 'ffmpeg'], ['Output size', formatBytes(r.bytes)]]} />
     </>
   )
 }

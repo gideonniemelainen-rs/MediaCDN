@@ -6,13 +6,16 @@ import { mkdir, readFile, readdir, rename, rm, stat, writeFile } from 'node:fs/p
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
-import { IngestError, jobPaths, normaliseFile, parseProgressLine, probeFile, readJob, writeJob } from './ingest.mjs'
+import { IngestError, isProgressNoise, jobPaths, normaliseFile, parseProgressLine, probeFile, readJob, writeJob } from './ingest.mjs'
 import { PIPELINE_VERSION, jobKey } from './job.mjs'
+import { selectRungs } from './ladder.mjs'
 import { chooseOutputId, parseRungsLine, verifyPackage } from './package.mjs'
+import { explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
 import { validate } from './validate.mjs'
 
 const PACKAGE_SCRIPT = fileURLToPath(new URL('../../scripts/package.sh', import.meta.url))
+const SCRIPTS_DIR = fileURLToPath(new URL('../scripts', import.meta.url))
 const exists = (p) => stat(p).then(() => true, () => false)
 
 async function dirBytes(dir) {
@@ -40,7 +43,12 @@ export async function readOriginOwners(origin) {
 
 export const outputIdFor = async (origin, slug, sha) => chooseOutputId(slug, sha, await readOriginOwners(origin))
 
-export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT }) {
+/**
+ * `packager` is 'ffmpeg' (scripts/package.sh on the host, the default) or 'shaka' (Shaka Packager in the
+ * worker `image`, run with docker); it defaults to PIPELINE_PACKAGER.
+ */
+export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT, packager = process.env.PIPELINE_PACKAGER, image = process.env.PIPELINE_IMAGE }) {
+  const kind = packagerKind(packager)
   const staging = (ctx) => join(origin, `.tmp-${ctx.meta.uploadId}`)
 
   return {
@@ -104,17 +112,30 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
       const stage = staging(ctx)
       const { info, mezzanine } = ctx.shared
       await rm(stage, { recursive: true, force: true })
+      await mkdir(stage, { recursive: true }) // the container needs it to exist to mount it
+      // Even, because the mezzanine's dimensions are (normalise rounds them down).
+      const sourceHeight = Math.floor(info.video.displayHeight / 2) * 2
+      const { cmd, args, env } = packageCommand({
+        kind,
+        mezzanine,
+        stage,
+        outputId: ctx.meta.outputId,
+        rungs: selectRungs(sourceHeight),
+        sourceHeight,
+        scriptsDir: SCRIPTS_DIR,
+        packageScript,
+        image,
+        uid: process.getuid?.(),
+        gid: process.getgid?.(),
+      })
       let rungs = []
       const tail = []
       await new Promise((resolve, reject) => {
-        const child = spawn('bash', [packageScript, ctx.meta.outputId], {
-          env: { ...process.env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1' },
-          stdio: ['ignore', 'pipe', 'pipe'],
-        })
+        const child = spawn(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
         createInterface({ input: child.stdout }).on('line', (line) => {
           const p = parseProgressLine(line, info.duration)
           if (p !== null) return h.progress(p)
-          if (/^[a-z_0-9]+=\S*$/.test(line)) return // the rest of ffmpeg's key=value progress block
+          if (isProgressNoise(line)) return
           rungs = parseRungsLine(line) ?? rungs
           h.log(line)
         })
@@ -123,15 +144,15 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
           if (tail.length > 20) tail.shift()
           h.log(line)
         })
-        child.on('error', reject)
-        child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(tail.slice(-3).join(' | ') || `package.sh exited ${code}`))))
+        child.on('error', (spawnError) => reject(new Error(explainPackagerFailure(kind, { spawnError }))))
+        child.on('close', (code) => (code === 0 ? resolve() : reject(new Error(explainPackagerFailure(kind, { code, stderrTail: tail })))))
       }).catch(async (e) => {
         await rm(stage, { recursive: true, force: true })
         throw new StageError('E_PACKAGE_FAILED', e.message)
       })
       ctx.shared.rungs = rungs
       const bytes = await dirBytes(stage)
-      return { summary: `${rungs.map((r) => `${r.height}p`).join(', ')} · ${mb(bytes)}`, result: { rungs, bytes } }
+      return { summary: `${rungs.map((r) => `${r.height}p`).join(', ')} · ${mb(bytes)} · ${kind === 'shaka' ? 'Shaka Packager' : 'ffmpeg'}`, result: { rungs, bytes, packager: kind } }
     },
 
     async verify(ctx) {
@@ -140,7 +161,8 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
       const master = await readFile(join(stage, 'master.m3u8'), 'utf8').catch(() => '')
       const playlists = {}
       for (const f of files.filter((n) => /^media_\d+\.m3u8$/.test(n))) playlists[f] = await readFile(join(stage, f), 'utf8')
-      const result = verifyPackage({ id: ctx.meta.outputId, files, master, playlists })
+      const mpd = await readFile(join(stage, 'manifest.mpd'), 'utf8').catch(() => undefined)
+      const result = verifyPackage({ id: ctx.meta.outputId, files, master, playlists, mpd })
       if (!result.ok) {
         const failed = result.checks.filter((c) => !c.ok).map((c) => c.name)
         await rm(stage, { recursive: true, force: true })

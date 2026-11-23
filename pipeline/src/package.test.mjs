@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { parseProgressLine } from './ingest.mjs'
+import { isProgressNoise, parseProgressLine } from './ingest.mjs'
 import { chooseOutputId, parseRungsLine, verifyPackage } from './package.mjs'
 import { hostAllowed, originAllowed, safeExt } from './server.mjs'
 
@@ -70,6 +70,13 @@ test('parseRungsLine reads package.sh output', () => {
     { height: 1080, kbps: 5000 },
   ])
   assert.equal(parseRungsLine('done: 12 files, 3.1M'), null)
+})
+
+test('the key=value lines of ffmpeg -progress are noise, padded or not, and real log lines are not', () => {
+  for (const l of ['frame=112', 'fps=0.0', 'bitrate=   0.1kbits/s', 'bitrate=N/A', 'speed=7.83x', 'speed=   1x', 'total_size=0', 'progress=continue', 'out_time=00:00:03.910000', 'stream_0_0_q=22.0'])
+    assert.equal(isProgressNoise(l), true, l)
+  for (const l of ['packaging x (source 720p) -> rungs:240:400', 'done: 37 files, 14M', 'WARNING: something odd', 'Error = bad thing happened', ''])
+    assert.equal(isProgressNoise(l), false, l)
 })
 
 test('parseProgressLine turns ffmpeg -progress output into a fraction', () => {

@@ -61,7 +61,8 @@ export interface NormaliseResult {
   mezzanineBytes: number
   decisions: { fps: number; sourceFps: number; rotated: number; deinterlaced: boolean; tonemapped: boolean; squarePixels: boolean; audio: { synthesised?: boolean; track?: number; tracks?: number }; loudnorm: string }
 }
-export interface PackageResult { rungs: { height: number; kbps: number }[]; bytes: number }
+/** `packager` is absent on jobs packaged before it was recorded (those used ffmpeg). */
+export interface PackageResult { rungs: { height: number; kbps: number }[]; bytes: number; packager?: 'ffmpeg' | 'shaka' }
 export interface VerifyResult { ok: boolean; checks: { name: string; ok: boolean; detail?: string }[]; renditions: { bandwidth: number; resolution: string | null }[] }
 export interface PublishResult { id: string; path: string; urls: { hls: string; dash: string } }
 export interface UploadResult { name: string; bytes: number; sha256: string; mbPerSecond: number }

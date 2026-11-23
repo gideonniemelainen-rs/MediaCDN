@@ -10,6 +10,17 @@ Ingest stage of the UGC transcoding pipeline: probe, validate, normalise. Design
 node bin/serve.mjs [--port 8790] [--work dir] [--origin dir]
 ```
 
+### Packagers
+
+The package stage has two backends, chosen with `PIPELINE_PACKAGER` when the server starts:
+
+| Value | What runs | Output |
+| --- | --- | --- |
+| `ffmpeg` (default) | `scripts/package.sh` on the host | ffmpeg's DASH muxer writes HLS and DASH together |
+| `shaka` | `scripts/package-shaka.sh` in the worker image, through `docker run` | ffmpeg encodes every rung in one pass, then Shaka Packager writes CMAF HLS and DASH |
+
+`PIPELINE_PACKAGER=shaka bash scripts/dev.sh` starts the app with the Shaka backend. It needs Docker and the worker image (`docker build -t mediacdn-pipeline:dev pipeline/`; `PIPELINE_IMAGE` names a different one). The container runs with no network, no capabilities and your own user id, and sees the mezzanine read-only. Both backends write the same file layout (`master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s`), so verify, publish, the origin and the player do not care which was used. Shaka output adds `AVERAGE-BANDWIDTH`, `FRAME-RATE`, `VIDEO-RANGE`, an explicit VOD playlist type and a static MPD. The ladder is `src/ladder.mjs` (240p to 1080p, never upscaled).
+
 It listens on loopback only, answers only to `localhost` hosts and to the dev server's origin (`PIPELINE_ALLOWED_ORIGINS=http://localhost:5173,...` to change it), and sends no CORS headers; the browser reaches it through Vite's `/api/pipeline` proxy. It runs ffmpeg on whatever it is sent, so it is for local use.
 
 ```

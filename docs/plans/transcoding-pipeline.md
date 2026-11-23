@@ -1,6 +1,6 @@
 # Transcoding pipeline
 
-Status: milestone 1 (ingest: probe, validate, normalise) built 2026-11-12; milestones 2-4 designed, not started.
+Status: milestone 1 (ingest: probe, validate, normalise) built 2026-11-12. Milestone 2 started 2026-11-23: Shaka Packager packaging is built behind `PIPELINE_PACKAGER=shaka` with the fixed ladder (see "Shaka packaging in the upload flow"); the content-aware ladder is not started. Milestones 3-4 designed, not started.
 
 The goal is a production-grade path from user-generated uploads (phone video, HD camera files, screen recordings) to HLS + DASH (CMAF) assets for the streaming app. `scripts/package.sh` stays as the quick local packager until milestone 2 replaces it. It assumes a clean 16:9 file with exactly one audio track and fixed bitrates.
 
@@ -67,7 +67,21 @@ Packaged the `selftest` mezzanine (3 video rungs plus audio) with Shaka v3.4.2 i
 - **Ladder encodes need `setsar=1` after `scale`:** `scale=-2:240` from 1280x720 gave `sar=640:639`.
 - **Gained over ffmpeg's muxer:** `AVERAGE-BANDWIDTH`, `FRAME-RATE`, `VIDEO-RANGE=SDR`, a `#EXT-X-PLAYLIST-TYPE:VOD` and proper `ENDLIST`.
 - **Differences to watch:** no `#EXT-X-PROGRAM-DATE-TIME` or `#EXT-X-MEDIA-SEQUENCE` in the source playlists (the live simulator generates its own, so nothing breaks), `TARGETDURATION` is 5 for 4 s segments, audio segments are 4.011/3.989 s, and the MPD `frameRate` is unreduced (`12288/512`).
-- **Not yet checked:** playback in Shaka Player in the browser, and amd64.
+- **Checked since (2026-11-23):** playback in Shaka Player in the browser (HLS, DASH and the simulated live all play), and the amd64 image (built and run, see the section below).
+
+### Shaka packaging in the upload flow (built 2026-11-23)
+
+`PIPELINE_PACKAGER=shaka` makes the upload server's package stage run `pipeline/scripts/package-shaka.sh` in the worker image with `docker run` (`src/packagers.mjs` builds the command, `src/steps.mjs` runs it). The default stays `scripts/package.sh`.
+
+- **One encode pass.** The spike encoded each rung separately. The script decodes the mezzanine once, splits it to every rung, and writes the audio in the same ffmpeg run. Progress comes from `-progress pipe:1`, as for `package.sh`.
+- **Ladder.** `src/ladder.mjs` has the rung table (the same heights and bitrates as `package.sh`) and never upscales. A 360p-or-lower rung always exists. The content-aware ladder will replace this table.
+- **Keyframes and colour.** `-g` and `-keyint_min` are the frame rate times 4 s, with `-sc_threshold 0`. The rungs are tagged BT.709 explicitly, because the mezzanine's tags did not reliably survive the filter chain and the master playlist then had no `VIDEO-RANGE`.
+- **Isolation.** The container has no network, drops all capabilities and runs as the host user, with the mezzanine mounted read-only. Uploads are untrusted media, so this is also a step toward the Docker-isolation answer to the "server runs ffmpeg on arbitrary files" risk.
+- **Verify** gained two checks that apply to both packagers: every HLS playlist is complete (`#EXT-X-ENDLIST`) and the MPD is `type="static"`.
+- **Failures** say what to do: Docker missing or not running, or the image not built.
+- **Evidence.** `src/shaka.e2e.test.mjs` runs the real stages through a real server and the real image: 4 s segments that all start on a keyframe, rung sizes and square pixels, colour tags, VOD and static manifests, a re-upload reusing the mezzanine, and a missing image failing cleanly with nothing published. Output also passes `tools/smoke-origin.mjs` (including the simulated live) and plays in the browser over HLS, DASH and live.
+- **amd64 (2026-11-23).** `docker build --platform linux/amd64` succeeds (pinned ffmpeg hash and Shaka `packager-linux-x64` both verified by the build), the image reports x86_64 with Shaka Packager v3.4.2 and ffmpeg 7.0.2, and `package-shaka.sh` packaged a clip with it under emulation on the arm64 host. Not run on a native amd64 machine or in CI.
+- **Not done:** the content-aware ladder, VMAF, and running the default packager in the image too.
 
 ### libvmaf options (decision pending)
 
@@ -104,7 +118,7 @@ The DAM is a consumer and a validator, not a dependency. `asset.json` carries `i
 - **Mezzanine size.** Decided: CRF 18 (was 12, 384 MB for 10 minutes of 720p). Remaining levers: delete the mezzanine after packaging (bucket lifecycle rule), AAC instead of FLAC (FLAC is about 9 MB per minute), and passthrough of already-clean sources.
 - **Tonemap is verified in the container only.** The Homebrew ffmpeg has no `zscale`, so the HDR integration test skips locally. In the container (arm64), a PQ/BT.2020 10-bit fixture came out as 8-bit `yuv420p` with BT.709 primaries, transfer and matrix. CI should run the suite in the image so this stays covered.
 - **No libvmaf in the pinned ffmpeg.** The johnvansickle 7.0.2 static builds lack it. Milestone 4 needs a different ffmpeg source (another static build or a source build); the Dockerfile only warns for now.
-- **Container pins.** The image builds on arm64 (2026-11-12) with ffmpeg 7.0.2 pinned by sha256 per architecture, and Shaka Packager v3.4.2 (`packager --version` runs). Only the arm64 path has been built. The amd64 hash is pinned from the published archive but the amd64 image and the `packager-linux-x64` asset are untested.
+- **Container pins.** The image builds on arm64 (2026-11-12) with ffmpeg 7.0.2 pinned by sha256 per architecture, and Shaka Packager v3.4.2 (`packager --version` runs). Both architectures now build (amd64 under emulation on 2026-11-23, with `packager-linux-x64` verified); only arm64 has been run natively.
 - **Loudness default.** On at -16 LUFS is a policy choice.
 - **Probe-only validation.** A file can probe fine and still fail to decode midway; that surfaces as `E_DECODE_FAILED` (exit 3) during normalise, not at validate.
 
