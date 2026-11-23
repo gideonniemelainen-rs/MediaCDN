@@ -1,6 +1,6 @@
 # Upload page with a live transcoding workflow graph
 
-Status: built (2026-11-19). The backend is tested end to end on real media and the web modules are unit-tested; the page itself has not yet been exercised in a browser (see Verification).
+Status: built (2026-11-19) and browser-verified (2026-11-23): upload, the graph updating live through the Vite proxy, a failing upload, a repeat upload reusing the mezzanine, the inline result player and "Open in main app". Since it was written the page has moved behind sign-in (every pipeline route except `/health` needs a session, and jobs are per user; see `history-storage.md`), and the package stage can use Shaka Packager (`PIPELINE_PACKAGER=shaka`; see `transcoding-pipeline.md`). The sections below describe the original design.
 
 Goal: a page at `/upload/` where a user picks a video (first: QuickTime screen recordings). After the upload it runs through the local transcoding pipeline, and the page shows a GitHub-Actions-style workflow graph: one node per step, updating live with status, timing and results.
 
@@ -38,7 +38,7 @@ upload -> probe -> validate -> normalise -> package -> verify -> publish      pi
 - `src/steps.mjs`: `package`, `verify` and `publish`.
   - `verifyPackage` is pure: manifests exist, rungs listed in `master.m3u8`, every segment in each media playlist exists, and the title would be listed by `buildIndex`.
   - `publish` atomically renames the staged output (`origin/.tmp-<uploadId>/`) into `origin/<id>/`. The index ignores the staging dir because ids start with `[a-z0-9]`.
-- `bin/serve.mjs` on `127.0.0.1:8790`, under `/api/pipeline`: `GET /health`, `POST /uploads` (raw streamed body, `X-Filename`, size cap from the profile), `GET /jobs`, `GET /jobs/:id`, `GET /jobs/:id/events` (SSE: current snapshot, then every change).
+- `bin/serve.mjs` on `127.0.0.1:8790`, under `/api/pipeline`: `GET /health`, `POST /uploads` (raw streamed body, `X-Filename`, size cap from the profile), `GET /jobs`, `GET /jobs/:id`, `GET /jobs/:id/events` (SSE: current snapshot, then every change). Added since: all of these except `/health` need a session cookie, `/jobs` lists only your own jobs (an admin sees all), and `/uploads` serves the history from the database.
   - Snapshots persist to `work/jobs/<id>.json`. Jobs found running at startup are marked failed (`interrupted`). One job runs at a time.
   - It rejects requests whose `Host` is not localhost or whose `Origin` is not the dev server, because any web page could otherwise make it run ffmpeg on arbitrary files.
 - `scripts/package.sh`: backward-compatible `INPUT=` and `OUT=` env overrides and `PROGRESS=<file>`. The positional `slug` and `--quick` are unchanged.
@@ -68,7 +68,7 @@ No new dependencies.
 
 ## Verification
 
-Done: `node --test pipeline/` (including `server.e2e.test.mjs`, which uploads the generated fixtures to a real server and runs the real stages) and `cd web && npm test`; `tsc -b` and `npm run build` are clean. Not yet done: the manual browser run in item 4, and SSE through the Vite proxy.
+Done: `node --test pipeline/` (including `server.e2e.test.mjs`, which uploads the generated fixtures to a real server and runs the real stages) and `cd web && npm test`; `tsc -b` and `npm run build` are clean. The manual browser run in item 4 and SSE through the Vite proxy were done on 2026-11-23 (see Status).
 
 1. `node --test pipeline/`: the existing ingest tests pass unchanged (proving the CLI contract survived the refactor), plus new tests for the stage runner, `parseProgress`, `verifyPackage`, id and collision naming, the server API on an ephemeral port, and a server end-to-end run on the generated fixtures.
 2. `cd web && npm test`: `graph-layout` and formatting helpers. Vitest here has no DOM environment, so components stay untested, as elsewhere in the repo.
@@ -83,4 +83,4 @@ Done: `node --test pipeline/` (including `server.e2e.test.mjs`, which uploads th
 - **Metadata.** Uploaded titles show as their id with "License not recorded". A sidecar and index change is a follow-up.
 - **Fixed ladder.** Screen recordings get film bitrates until milestone 2.
 - **Dev only.** Needs the local job server; not a deployable upload service.
-- **SSE through the Vite proxy** should be confirmed early.
+- **SSE through the Vite proxy**: confirmed working (2026-11-23).

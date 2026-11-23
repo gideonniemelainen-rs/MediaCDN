@@ -1,6 +1,6 @@
 # Ad injection variants in the 4-box player (CSAI, SSAI, SGAI)
 
-Status: planned, not started. Resumes after the telemetry and packaging build (see `docs/sources.md`).
+Status: planned, not started. Resumes after the telemetry and packaging build (see `docs/sources.md`). Step 0 is half done (checked 2026-11-23): the ad assets no longer depend on third-party URLs (`scripts/make-ads.mjs` builds `origin/ads/` with an `ads.json` inventory that `web/src/ads.ts` reads), but whether the overlay plays has not been established. "Trigger ad" with a single quadrant playing showed nothing, and the cause was not diagnosed. `ad-service/` is still empty.
 
 ## Context
 The client (`web/`) plays four Shaka quadrants with focus-based audio, plus a basic ad overlay (`web/src/AdOverlay.tsx`, `ads.ts`, ad state in `state.ts`). That overlay currently does not work. The goal is learning: implement one or more versions of each ad-injection model behind a common switch and compare them side by side.
@@ -74,8 +74,8 @@ web/src/ads/
 6. Later: ad assets/service on a free-tier GCP project behind Media CDN (`/ads/*` and segments cached; stitched/SGAI manifests short-TTL or bypass).
 
 ## Risks
-- ffmpeg, gcloud, Terraform not installed.
-- Cause of the current ad failure unknown.
+- gcloud and Terraform are not installed (ffmpeg is).
+- Cause of the current ad failure unknown: the third-party URL suspect is gone, so it is now something in the overlay, the ad state or the inventory fetch.
 - SSAI live stitching is the hardest part (sliding window, discontinuities, codec mismatch).
 - Video Stitcher API availability requires sales enablement.
 

@@ -22,19 +22,26 @@ export interface BuildInput {
 export function buildRunPayload({ events, now, timeOrigin, label, env = {}, slots = SLOT_COUNT }: BuildInput): RunPayload | null {
   const sessions: RunPayload['sessions'] = []
   const kept: TelemetryEvent[] = []
+  let started = Infinity
   for (let slot = 0; slot < slots; slot++) {
     const own = sessionEvents(events, slot)
     const summary = summarize(events, slot, now)
     if (!own.length || !summary) continue
     sessions.push({ slot, streamId: own[0].streamId, delivery: own[0].delivery, summary })
     kept.push(...own)
+    started = Math.min(started, own[0].t)
+    // The quadrant's ABR cap is set when it mounts, before the session's load-start, so it is not in
+    // `own`. Keep the one in force when the session began, or the saved run cannot say what was capped.
+    const mine = events.filter((e) => e.slot === slot)
+    const before = mine.slice(0, mine.indexOf(own[0])).reverse().find((e) => e.type === 'abr-cap')
+    if (before) kept.push(before)
   }
   if (!sessions.length) return null
   kept.sort((a, b) => a.t - b.t)
   const name = label?.trim()
   return {
     ...(name ? { label: name } : {}),
-    startedAt: Math.round(timeOrigin + kept[0].t),
+    startedAt: Math.round(timeOrigin + started),
     endedAt: Math.round(timeOrigin + now),
     env,
     timeOrigin,

@@ -6,7 +6,7 @@ Goal: record which HTTP version each request actually used, and compare h1, h2 a
 
 ## Context
 
-The app records per-request and per-session telemetry (startup, rebuffer, segment latency and throughput, ABR switches), grouped by `delivery` (`direct`, `local`, `s3`, `cdn-public`, `cdn-s3`). Nothing records the transport protocol.
+The app records per-request and per-session telemetry (startup, rebuffer, segment latency and throughput, ABR switches), grouped by `delivery` (`direct`, `local`, `s3-near`, `s3-far`, `cdn-public`, `cdn-s3`). Nothing records the transport protocol.
 
 What the code and Shaka Player 5.3.3 allow today:
 
@@ -38,7 +38,7 @@ Works against any target.
   - Add `alt-svc` to `KEEP_HEADER`.
   - Add the requested transport to `Ctx` and to `recordAbrCap` in `QuadrantPlayer.tsx`.
 - `tools/serve-origin.mjs`: add `Timing-Allow-Origin: *` and extend `Access-Control-Expose-Headers` with `Alt-Svc, Age, X-Cache, Via, Cache-Control, Server`. Assert both in `tools/smoke-origin.mjs`.
-- S3 bucket CORS and the Media CDN route response headers need the same headers. Neither is in the repo.
+- The CORS settings of both S3 buckets (near and far) and the Media CDN route response headers need the same headers. None of them is in the repo. (Reading `index.json` from the near bucket already returns HTTP 403, so its policy needs attention first.)
 
 ## Milestone 2: local multi-protocol lab
 
@@ -57,7 +57,7 @@ Works against any target.
 
 ## Milestone 3: live side-by-side comparison
 
-- `catalog.ts`: `type Transport = 'h1' | 'h2' | 'h3'` (the one requested) and `resolveStream(stream, delivery, transport?)` picks the local base. For `cdn-*` and `s3` the transport is whatever the server negotiates.
+- `catalog.ts`: `type Transport = 'h1' | 'h2' | 'h3'` (the one requested) and `resolveStream(stream, delivery, transport?)` picks the local base. For `cdn-*` and `s3-*` the transport is whatever the server negotiates.
 - Per-slot transport selection beside the per-quadrant Delivery picker in `App.tsx`, passed to `QuadrantPlayer`. It goes into the effect deps because the URL changes, and into `ctx`.
 - `telemetry/types.ts`: add `transport` to `TelemetryEvent` as a first-class field, like `delivery`.
 - `telemetry/metrics.ts`:
@@ -108,5 +108,5 @@ Modified:
 - **Resource Timing join is the main unknown.** Entries may arrive after the response filter fires, so a short spike comes first.
 - **Alt-Svc caching.** Chrome remembers h3 state between runs, which the throwaway profile avoids.
 - **Safari and Firefox** are out of the forced-protocol runs (see Decisions).
-- **S3 and Media CDN** report `unknown` until `Timing-Allow-Origin` is configured outside this repo.
+- **S3 (near and far) and Media CDN** report `unknown` until `Timing-Allow-Origin` is configured outside this repo.
 - **Shaping needs `sudo`**, so it is run by hand.

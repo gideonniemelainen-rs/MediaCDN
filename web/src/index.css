@@ -105,3 +105,52 @@ table.history tr.detail-row td { padding: 0 10px 14px; border-bottom: 1px solid 
 .run-detail .muted { margin-top: 8px; font-size: 12px; }
 .play-blocked { padding: 8px 16px; border: 1px solid #4ea1ff; border-radius: 8px; background: rgba(78,161,255,.12); color: #cfe6ff; font-size: 14px; cursor: pointer; }
 .play-blocked:hover { background: rgba(78,161,255,.25); }
+
+/* Charts. The app has only a dark theme, so these are the dark steps of the reference palette (validated
+   against the #1a1a19 surface: node validate_palette.js "#3987e5,#d95926,#199e70,#c98500" --mode dark). Colour is by
+   quadrant slot, so Q2 is orange in every chart and every run. */
+.charts {
+  --surface-1: #1a1a19;
+  --text-primary: #f0efec;
+  --text-secondary: #c3c2b7;
+  --text-muted: #898781;
+  --grid: #2c2c2a;
+  --axis: #383835;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  display: grid; gap: 16px; margin-top: 14px;
+}
+.chart { margin: 0; padding: 14px 16px 10px; background: var(--surface-1); border-radius: 10px; color: var(--text-secondary); }
+.chart figcaption { display: flex; align-items: baseline; gap: 10px; }
+.chart h3 { margin: 0; font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.chart-unit { font-size: 12px; color: var(--text-muted); }
+.chart-toggle { margin-left: auto; padding: 3px 10px; border-radius: 6px; border: 1px solid #333; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.chart-toggle:hover, .chart-toggle[aria-pressed=true] { border-color: #555; color: var(--text-primary); }
+.chart-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 8px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.chart-legend li { display: flex; align-items: center; gap: 6px; }
+.chart .key { display: inline-block; width: 14px; height: 2px; border-radius: 1px; flex: none; }
+.chart-legend .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-secondary); flex: none; }
+.chart-sub { margin: 6px 0 0; font-size: 12px; color: var(--text-secondary); }
+.chart-empty { margin: 14px 0 6px; }
+.chart-frame { position: relative; margin-top: 6px; outline-offset: 2px; border-radius: 6px; }
+.chart-frame:focus-visible { outline: 2px solid #4ea1ff; }
+.chart svg { display: block; overflow: visible; }
+.chart .grid { stroke: var(--grid); stroke-width: 1; }
+.chart .axis { stroke: var(--axis); stroke-width: 1; }
+.chart .tick { fill: var(--text-muted); font-size: 11px; }
+.chart .end-label { fill: var(--text-secondary); font-size: 11px; }
+.chart .line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.chart .mark { stroke: var(--surface-1); stroke-width: 2; }
+.chart .crosshair { stroke: var(--text-muted); stroke-width: 1; }
+.chart-tip { position: absolute; z-index: 2; min-width: 150px; padding: 8px 10px; background: #242423; border: 1px solid #383835; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,.4); pointer-events: none; font-size: 12px; }
+.chart-tip .tip-time { margin-bottom: 4px; color: var(--text-muted); }
+.chart-tip .tip-row { display: flex; align-items: center; gap: 8px; padding: 1px 0; }
+.chart-tip strong { color: var(--text-primary); font-weight: 600; min-width: 44px; font-variant-numeric: tabular-nums; }
+.chart-tip .tip-name { color: var(--text-secondary); }
+.chart-table-wrap { max-height: 260px; overflow: auto; margin-top: 8px; }
+.chart-table { width: 100%; border-collapse: collapse; font: 12px ui-monospace, monospace; }
+.chart-table th, .chart-table td { text-align: left; padding: 3px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+.chart-table th { position: sticky; top: 0; background: var(--surface-1); color: var(--text-secondary); font-weight: 500; }
+.chart-warn { margin: 0; padding: 8px 12px; border-radius: 8px; background: #2a2210; border: 1px solid #4a3a14; color: #e8cf8a; font-size: 12px; }

@@ -3,6 +3,7 @@ import { DELIVERY_LABEL, type Delivery } from '../catalog'
 import { SummaryTable } from '../telemetry/SummaryTable'
 import { fetchRunEvents } from './api'
 import { rebuildRows, type RebuiltRow } from './run'
+import { RunCharts } from './RunCharts'
 import type { EventsBlob, RunRow } from './types'
 
 type Load = { state: 'loading' } | { state: 'error'; message: string } | { state: 'ready'; blob: EventsBlob; rows: RebuiltRow[] }
@@ -32,6 +33,7 @@ export function RunDetail({ run }: { run: RunRow }) {
           rows={load.rows.map((r) => ({ ...r, delivery: DELIVERY_LABEL[r.delivery as Delivery] ?? r.delivery }))}
         />
       </div>
+      <RunCharts blob={load.blob} />
       <p className="muted">
         {load.blob.events.length.toLocaleString()} events
         {thinned && ` (periodic samples thinned from ${thinned.from.toLocaleString()} to ${thinned.to.toLocaleString()} to fit)`}

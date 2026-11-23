@@ -49,6 +49,22 @@ describe('buildRunPayload', () => {
     expect(p.label).toBeUndefined()
   })
 
+  it('keeps the ABR cap that was in force when a session began, though it was set before load-start', () => {
+    const withCaps = [ev(0, 'abr-cap', 50, { data: { maxHeight: null } }), ev(1, 'abr-cap', 60, { data: { maxHeight: 360 } }), ...EVENTS]
+    const p = buildRunPayload({ events: withCaps, now: NOW, timeOrigin: TIME_ORIGIN })!
+    const caps = p.events.filter((e) => e.type === 'abr-cap')
+    expect(caps.map((c) => [c.slot, c.data.maxHeight])).toEqual([[0, null], [1, 360]])
+    expect(p.startedAt).toBe(TIME_ORIGIN + 100) // the run starts at the first load, not at the cap
+    const [s0, s1] = rebuildRows({ events: p.events, nowMs: p.nowMs })
+    expect(s0.summary).toEqual(summarize(EVENTS, 0, NOW))
+    expect(s1.summary).toEqual(summarize(EVENTS, 1, NOW))
+  })
+
+  it('only keeps the cap that preceded the session, not one from an earlier session', () => {
+    const p = buildRunPayload({ events: [ev(0, 'abr-cap', 1, { data: { maxHeight: 720 } }), ev(0, 'load-start', 2), ev(0, 'abr-cap', 3, { data: { maxHeight: 360 } }), ...EVENTS.map((e) => ({ ...e, t: e.t + 10 }))], now: NOW, timeOrigin: TIME_ORIGIN })!
+    expect(p.events.filter((e) => e.slot === 0 && e.type === 'abr-cap').map((e) => e.data.maxHeight)).toEqual([360])
+  })
+
   it('is null when nothing has played', () => {
     expect(buildRunPayload({ events: [], now: NOW, timeOrigin: TIME_ORIGIN })).toBeNull()
   })

@@ -5,10 +5,10 @@ PoC: a 4-quadrant video streamer on Google Cloud Media CDN. Each quadrant plays 
 See `docs/` for architecture and decisions.
 
 ## Layout
-- `infra/` Terraform for Media CDN origins, routes, keyset, and Cloud Run
+- `infra/` Terraform for Media CDN origins, routes, keyset, and Cloud Run; empty, not written yet
 - `web/` React + Vite + TypeScript client (Shaka Player)
-- `ad-service/` ad-decision API (Cloud Run)
-- `catalog/` selectable stream list
+- `ad-service/` ad-decision API (Cloud Run); empty, planned in `docs/plans/ad-injection-plan.md`
+- `catalog/` selectable stream list; empty, the catalog is built from `web/src/catalog.ts` and each delivery's `index.json`
 - `pipeline/` UGC transcoding pipeline (ffmpeg + Shaka Packager) and its local upload server; see `docs/plans/transcoding-pipeline.md` and `docs/plans/upload-page.md`
 
 ## Local workflow

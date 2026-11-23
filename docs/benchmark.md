@@ -1,5 +1,7 @@
 # Delivery benchmark: S3 direct vs Media CDN
 
+Not to be confused with the in-app comparison: playing one title in several quadrants and pressing Save run in the telemetry panel stores a live comparison in the database (see `plans/history-storage.md`). This CLI report is separate and is loaded from a file.
+
 `tools/bench.mjs` fetches the same packaged title through several base URLs ("targets") and compares
 latency, throughput and cache behaviour. It also projects a monthly cost for each path.
 
@@ -44,3 +46,4 @@ scenario volumes as relative, not absolute.
 - One vantage point, one client: results mostly reflect a single edge location and S3 region.
 - Sequential requests from one client show latency, not congestion or capacity.
 - Until a CDN target exists, the report only compares local runs against themselves.
+- Target names are free text and are not the app's `Delivery` ids (`local`, `s3-near`, `s3-far`, `cdn-s3`, ...). Importing a CLI report into the saved-runs store would need that mapping.
