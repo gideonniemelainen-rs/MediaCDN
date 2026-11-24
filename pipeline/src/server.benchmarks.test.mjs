@@ -12,7 +12,7 @@ import { createPipelineServer } from './server.mjs'
 
 const db = await openTestDb()
 const quick = async () => ({ summary: 'ok' })
-const steps = { probe: quick, validate: quick, normalise: quick, package: quick, verify: quick, publish: quick }
+const steps = { probe: quick, validate: quick, normalise: quick, ladder: quick, package: quick, verify: quick, publish: quick }
 const BASE = 1_795_000_000_000
 const ev = (over = {}) => ({ t: 1, slot: 0, streamId: 'bbb-hls', delivery: 'local', type: 'load-start', data: {}, ...over })
 const run = (over = {}) => ({

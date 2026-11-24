@@ -26,7 +26,7 @@ browser /upload/  --XHR POST (raw body)-->  Vite proxy /api/pipeline  -->  pipel
         ^                                                                     |
         |-- EventSource job snapshots <---------------------------------------|  runs stages one job at a time
                                                                               v
-upload -> probe -> validate -> normalise -> package -> verify -> publish      pipeline/work/ then origin/<id>/
+upload -> probe -> validate -> normalise -> ladder -> package -> verify -> publish      pipeline/work/ then origin/<id>/
 ```
 
 ## Backend (`pipeline/`)

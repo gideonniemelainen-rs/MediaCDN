@@ -49,7 +49,7 @@ describe('upload history', { skip: !db && SKIP }, () => {
     assert.equal(row.durationMs, 105)
     assert.equal(row.errorCode, null)
     const stages = await db.pool.query('SELECT stage, status FROM upload_stages WHERE upload_id = $1 ORDER BY stage', ['aaaaaaa1'])
-    assert.equal(stages.rowCount, 7)
+    assert.equal(stages.rowCount, 8)
     assert.ok(stages.rows.every((r) => r.status === 'success'))
   })
 
@@ -58,7 +58,7 @@ describe('upload history', { skip: !db && SKIP }, () => {
     await uploads.upsert(j)
     await uploads.upsert(j)
     assert.equal((await db.pool.query(`SELECT count(*) AS n FROM uploads WHERE id = 'aaaaaaa2'`)).rows[0].n, '1')
-    assert.equal((await db.pool.query(`SELECT count(*) AS n FROM upload_stages WHERE upload_id = 'aaaaaaa2'`)).rows[0].n, '7')
+    assert.equal((await db.pool.query(`SELECT count(*) AS n FROM upload_stages WHERE upload_id = 'aaaaaaa2'`)).rows[0].n, '8')
   })
 
   test('a failed job keeps the stable error code of the failing stage', async () => {

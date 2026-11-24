@@ -11,7 +11,7 @@ import { createPipelineServer } from './server.mjs'
 
 const db = await openTestDb()
 const quick = async () => ({ summary: 'ok' })
-const steps = { probe: quick, validate: quick, normalise: quick, package: quick, verify: quick, publish: quick }
+const steps = { probe: quick, validate: quick, normalise: quick, ladder: quick, package: quick, verify: quick, publish: quick }
 
 describe('server auth', { skip: !db && SKIP }, () => {
   const cleanup = []

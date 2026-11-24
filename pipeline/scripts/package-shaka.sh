@@ -6,6 +6,7 @@
 #   verify stage already read: master.m3u8, manifest.mpd, media_N.m3u8, init-N.m4s, chunk-N-NNNNN.m4s
 #   (video rungs 0..n-1, audio n).
 # Env: INPUT mezzanine, OUT output directory, RUNGS "360:800 720:2800" (height:kbps),
+#      CRF (optional) constant quality: each rung is then capped at 1.5x its kbps (VBV) instead of aimed at it,
 #      SLUG and SRC_H for the log line, SEG segment seconds (default 4), PROGRESS for ffmpeg -progress.
 set -euo pipefail
 
@@ -39,11 +40,14 @@ for r in "$@"; do
   b=${r##*:}
   # setsar=1 after scale: scale=-2:240 of a 1280x720 source otherwise leaves sar=640:639.
   filter="$filter;[s$i]scale=-2:$h,setsar=1[v$i]"
+  # Capped CRF (the content-aware ladder) or a target rate (the fixed ladder); VBV below bounds the peaks either way.
+  rate=(-b:v "${b}k")
+  [ -z "${CRF:-}" ] || rate=(-crf "$CRF")
   # Normalise guarantees 8-bit SDR BT.709, so say so explicitly: the tags do not reliably survive the
   # filter chain, and without them the playlist has no VIDEO-RANGE and the MPD no colour description.
   args+=(-map "[v$i]" -an -c:v libx264 -preset veryfast -profile:v high -pix_fmt yuv420p
     -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv
-    -b:v "${b}k" -maxrate "$((b * 3 / 2))k" -bufsize "$((b * 2))k"
+    "${rate[@]}" -maxrate "$((b * 3 / 2))k" -bufsize "$((b * 2))k"
     -g "$gop" -keyint_min "$gop" -sc_threshold 0 "$tmp/v$i.mp4")
   i=$((i + 1))
 done

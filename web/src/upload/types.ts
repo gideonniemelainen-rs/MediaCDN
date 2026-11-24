@@ -61,6 +61,18 @@ export interface NormaliseResult {
   mezzanineBytes: number
   decisions: { fps: number; sourceFps: number; rotated: number; deinterlaced: boolean; tonemapped: boolean; squarePixels: boolean; audio: { synthesised?: boolean; track?: number; tracks?: number }; loudnorm: string }
 }
+/** The ladder stage: `fixed` ladders come from the fixed table, the rest were measured (`measured` is the average kbps at constant quality `crf`). */
+export interface LadderResult {
+  rungs: { height: number; kbps: number }[]
+  fixed: boolean
+  reason?: string | null
+  class?: 'screen' | 'film'
+  bpp?: number
+  crf?: number
+  measured?: { height: number; kbps: number }[]
+  dropped?: { height: number; reason: string }[]
+  sampledSeconds?: number
+}
 /** `packager` is absent on jobs packaged before it was recorded (those used ffmpeg). */
 export interface PackageResult { rungs: { height: number; kbps: number }[]; bytes: number; packager?: 'ffmpeg' | 'shaka' }
 export interface VerifyResult { ok: boolean; checks: { name: string; ok: boolean; detail?: string }[]; renditions: { bandwidth: number; resolution: string | null }[] }

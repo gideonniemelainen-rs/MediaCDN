@@ -14,7 +14,7 @@ import { finishStage, newJob, startStage } from './stages.mjs'
 
 const db = await openTestDb()
 const quick = async () => ({ summary: 'ok' })
-const steps = { probe: quick, validate: quick, normalise: quick, package: quick, verify: quick, publish: quick }
+const steps = { probe: quick, validate: quick, normalise: quick, ladder: quick, package: quick, verify: quick, publish: quick }
 
 describe('server history and per-user access', { skip: !db && SKIP }, () => {
   const cleanup = []
@@ -90,7 +90,7 @@ describe('server history and per-user access', { skip: !db && SKIP }, () => {
     assert.deepEqual(mine.uploads.map((u) => [u.id, u.name, u.status]), [[patJob, 'pats.mov', 'success']])
     assert.equal(mine.next, null)
     const one = await (await t.get('pat', `/uploads/${patJob}`)).json()
-    assert.equal(one.job.stages.length, 7)
+    assert.equal(one.job.stages.length, 8)
     assert.equal((await t.get('pat', `/uploads/${samJob}`)).status, 404)
     assert.equal((await (await t.get('admin', '/uploads')).json()).uploads.length, 2)
     assert.equal((await t.get('pat', '/uploads/not-an-id')).status, 404)

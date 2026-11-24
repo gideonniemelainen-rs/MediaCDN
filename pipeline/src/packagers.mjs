@@ -21,10 +21,11 @@ export function packagerKind(value) {
  * @param {string} o.stage      host path of the (existing) staging directory
  * @param {string} o.outputId
  * @param {{height:number,kbps:number}[]} o.rungs  used by shaka only
+ * @param {number|null} [o.crf]                    shaka only: encode each rung at this constant quality, capped by its kbps (VBV); without it kbps is the target rate
  * @param {number} o.sourceHeight                  used by shaka only, for the log line
  * @returns {{ cmd: string, args: string[], env: Record<string,string|undefined> }}
  */
-export function packageCommand({ kind, mezzanine, stage, outputId, rungs, sourceHeight, scriptsDir, packageScript, image = DEFAULT_IMAGE, uid, gid, env = process.env }) {
+export function packageCommand({ kind, mezzanine, stage, outputId, rungs, crf, sourceHeight, scriptsDir, packageScript, image = DEFAULT_IMAGE, uid, gid, env = process.env }) {
   if (kind === 'ffmpeg') {
     return { cmd: 'bash', args: [packageScript, outputId], env: { ...env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1' } }
   }
@@ -43,6 +44,7 @@ export function packageCommand({ kind, mezzanine, stage, outputId, rungs, source
       ...e('OUT', '/out'),
       ...e('PROGRESS', 'pipe:1'),
       ...e('RUNGS', formatRungs(rungs)),
+      ...(crf ? e('CRF', crf) : []),
       ...e('SRC_H', sourceHeight),
       ...e('SLUG', outputId),
       '--entrypoint', 'bash',

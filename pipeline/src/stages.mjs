@@ -7,7 +7,8 @@ export const STAGES = [
   { id: 'probe', label: 'Probe', needs: ['upload'] },
   { id: 'validate', label: 'Validate', needs: ['probe'] },
   { id: 'normalise', label: 'Normalise', needs: ['validate'] },
-  { id: 'package', label: 'Package', needs: ['normalise'] },
+  { id: 'ladder', label: 'Ladder', needs: ['normalise'] },
+  { id: 'package', label: 'Package', needs: ['ladder'] },
   { id: 'verify', label: 'Verify', needs: ['package'] },
   { id: 'publish', label: 'Publish', needs: ['verify'] },
 ]

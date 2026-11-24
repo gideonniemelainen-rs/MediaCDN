@@ -14,7 +14,7 @@ after(() => Promise.all(cleanup.map((f) => f())))
 
 const quick = (summary) => async () => ({ summary })
 const stubSteps = (over = {}) => ({
-  probe: quick('probed'), validate: quick('accepted'), normalise: quick('normalised'),
+  probe: quick('probed'), validate: quick('accepted'), normalise: quick('normalised'), ladder: quick('laddered'),
   package: quick('packaged'), verify: quick('verified'), publish: quick('published'),
   ...over,
 })
@@ -43,7 +43,7 @@ test('an upload becomes a job that runs every stage to success', async () => {
   const { id } = await res.json()
   const job = await finished(t, id)
   assert.equal(job.status, 'success')
-  assert.deepEqual(job.stages.map((s) => s.status), Array(7).fill('success'))
+  assert.deepEqual(job.stages.map((s) => s.status), Array(8).fill('success'))
   const up = job.stages[0]
   assert.equal(up.result.bytes, 500)
   assert.equal(up.result.name, 'Screen Recording.mov')
@@ -107,7 +107,7 @@ test('requests with a foreign Host or Origin are refused, and no CORS headers ar
 test('the stage definitions are served so the UI can draw the graph before a job exists', async () => {
   const t = await start()
   const { stages } = await (await fetch(`${t.base}/stages`)).json()
-  assert.deepEqual(stages.map((s) => s.id), ['upload', 'probe', 'validate', 'normalise', 'package', 'verify', 'publish'])
+  assert.deepEqual(stages.map((s) => s.id), ['upload', 'probe', 'validate', 'normalise', 'ladder', 'package', 'verify', 'publish'])
   assert.deepEqual(stages[1].needs, ['upload'])
 })
 
@@ -168,7 +168,7 @@ test('a failing stage fails the job, skips the rest, and the next job still runs
   const a = await finished(t, first.id)
   const b = await finished(t, second.id)
   assert.equal(a.status, 'failed')
-  assert.deepEqual(a.stages.map((s) => s.status), ['success', 'success', 'failed', 'skipped', 'skipped', 'skipped', 'skipped'])
+  assert.deepEqual(a.stages.map((s) => s.status), ['success', 'success', 'failed', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
   assert.equal(b.status, 'success')
   const { jobs } = await (await fetch(`${t.base}/jobs`)).json()
   assert.deepEqual(jobs.map((j) => j.status).sort(), ['failed', 'success'])

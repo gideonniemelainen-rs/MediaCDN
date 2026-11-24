@@ -63,6 +63,13 @@ test('the shaka packager runs the worker image with no network, no capabilities 
   assert.ok(a.endsWith(`--entrypoint bash ${DEFAULT_IMAGE} /scripts/package-shaka.sh`))
 })
 
+test('a ladder with a constant quality passes it on, and without one the rates are targets as before', () => {
+  const withCrf = packageCommand({ ...base, kind: 'shaka', crf: 23 }).args
+  assert.ok(withCrf.includes('CRF=23'))
+  assert.ok(!packageCommand({ ...base, kind: 'shaka' }).args.some((a) => a.startsWith('CRF=')))
+  assert.ok(!packageCommand({ ...base, kind: 'shaka', crf: null }).args.some((a) => a.startsWith('CRF=')))
+})
+
 test('the image can be overridden, and the user flag is left out where there is no uid', () => {
   const c = packageCommand({ ...base, kind: 'shaka', image: 'registry.example/worker:1' })
   assert.ok(!c.args.includes('--user'))

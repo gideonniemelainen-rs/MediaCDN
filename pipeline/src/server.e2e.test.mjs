@@ -53,11 +53,12 @@ const states = (job) => job.stages.map((s) => s.status)
 test('a clean video flows through every stage and is published', { skip }, async () => {
   const job = await run('clean.mp4')
   assert.equal(job.status, 'success', JSON.stringify(states(job)))
-  assert.deepEqual(states(job), ['success', 'success', 'success', 'success', 'success', 'success', 'success'])
+  assert.deepEqual(states(job), Array(8).fill('success'))
 
   const verify = stage(job, 'verify').result
   assert.equal(verify.ok, true, JSON.stringify(verify.checks.filter((c) => !c.ok)))
   assert.ok(stage(job, 'package').result.rungs.length >= 1)
+  assert.equal(stage(job, 'ladder').result.fixed, true, 'the ffmpeg packager keeps its fixed table')
 
   const files = await readdir(join(origin, 'ugc-clean'))
   for (const f of ['master.m3u8', 'manifest.mpd', 'source.json']) assert.ok(files.includes(f), `${f} missing`)
@@ -81,7 +82,7 @@ test('an audio-only upload is rejected at validate and nothing is published', { 
   const before = await readdir(origin)
   const job = await run('audio-only.m4a')
   assert.equal(job.status, 'failed')
-  assert.deepEqual(states(job), ['success', 'success', 'failed', 'skipped', 'skipped', 'skipped', 'skipped'])
+  assert.deepEqual(states(job), ['success', 'success', 'failed', 'skipped', 'skipped', 'skipped', 'skipped', 'skipped'])
   assert.equal(stage(job, 'validate').result.code, 'E_AUDIO_ONLY')
   assert.deepEqual(await readdir(origin), before)
 })

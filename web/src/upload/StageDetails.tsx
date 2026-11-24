@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { formatBytes, formatDuration, stageElapsed, statusWord } from './format'
 import type {
-  NormaliseResult, PackageResult, ProbeResult, PublishResult, Stage, UploadResult, ValidateResult, VerifyResult,
+  LadderResult, NormaliseResult, PackageResult, ProbeResult, PublishResult, Stage, UploadResult, ValidateResult, VerifyResult,
 } from './types'
 
 function Rows({ rows }: { rows: [string, ReactNode][] }) {
@@ -80,6 +80,34 @@ function Normalise({ r }: { r: NormaliseResult }) {
   )
 }
 
+function Ladder({ r }: { r: LadderResult }) {
+  if (r.fixed) return <Rows rows={[['Ladder', 'fixed table'], ...(r.reason ? ([['Why', r.reason]] as [string, ReactNode][]) : [])]} />
+  const measured = new Map((r.measured ?? []).map((m) => [m.height, m.kbps]))
+  return (
+    <>
+      <table className="rungs">
+        <thead>
+          <tr><th>Rung</th><th>Measured</th><th>Ladder</th></tr>
+        </thead>
+        <tbody>
+          {r.rungs.map((g) => (
+            <tr key={g.height}><td>{g.height}p</td><td>{measured.has(g.height) ? `${measured.get(g.height)} kbps` : '–'}</td><td>{g.kbps} kbps</td></tr>
+          ))}
+        </tbody>
+      </table>
+      <Rows
+        rows={[
+          ['Content', r.class === 'screen' ? 'screen-like: flat areas, little motion' : 'film-like: continuous motion and detail'],
+          ...(r.bpp !== undefined ? ([['Complexity', `${r.bpp} bits per pixel per frame at 720p`]] as [string, ReactNode][]) : []),
+          ...(r.crf !== undefined ? ([['Quality', `CRF ${r.crf}, peaks capped at 1.5× the rung rate`]] as [string, ReactNode][]) : []),
+          ...(r.sampledSeconds !== undefined ? ([['Sampled', `${r.sampledSeconds} s of the title`]] as [string, ReactNode][]) : []),
+          ...(r.dropped?.length ? ([['Left out', r.dropped.map((d) => `${d.height}p: ${d.reason}`).join('; ')]] as [string, ReactNode][]) : []),
+        ]}
+      />
+    </>
+  )
+}
+
 function Package({ r }: { r: PackageResult }) {
   return (
     <>
@@ -119,7 +147,7 @@ function Publish({ r }: { r: PublishResult }) {
 // The field each stage's result must carry to be shown. A failed stage's result may be just
 // `{ code }` (a probe that could not read the file, say), which these components cannot render.
 const REQUIRES: Record<string, string> = {
-  upload: 'bytes', probe: 'info', validate: 'warnings', normalise: 'decisions', package: 'rungs', verify: 'checks', publish: 'urls',
+  upload: 'bytes', probe: 'info', validate: 'warnings', normalise: 'decisions', ladder: 'rungs', package: 'rungs', verify: 'checks', publish: 'urls',
 }
 
 function Result({ stage }: { stage: Stage }) {
@@ -132,6 +160,7 @@ function Result({ stage }: { stage: Stage }) {
     case 'probe': return <Probe r={r as unknown as ProbeResult} />
     case 'validate': return <Validate r={r as unknown as ValidateResult} />
     case 'normalise': return <Normalise r={r as unknown as NormaliseResult} />
+    case 'ladder': return <Ladder r={r as unknown as LadderResult} />
     case 'package': return <Package r={r as unknown as PackageResult} />
     case 'verify': return <Verify r={r as unknown as VerifyResult} />
     case 'publish': return <Publish r={r as unknown as PublishResult} />

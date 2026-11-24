@@ -8,7 +8,8 @@ import { createInterface } from 'node:readline'
 import { fileURLToPath } from 'node:url'
 import { IngestError, isProgressNoise, jobPaths, normaliseFile, parseProgressLine, probeFile, readJob, writeJob } from './ingest.mjs'
 import { PIPELINE_VERSION, jobKey } from './job.mjs'
-import { selectRungs } from './ladder.mjs'
+import { gopFrames, measureComplexity } from './complexity.mjs'
+import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from './ladder.mjs'
 import { chooseOutputId, parseRungsLine, verifyPackage } from './package.mjs'
 import { explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
@@ -45,9 +46,9 @@ export const outputIdFor = async (origin, slug, sha) => chooseOutputId(slug, sha
 
 /**
  * `packager` is 'ffmpeg' (scripts/package.sh on the host, the default) or 'shaka' (Shaka Packager in the
- * worker `image`, run with docker); it defaults to PIPELINE_PACKAGER.
+ * worker `image`, run with docker); it defaults to PIPELINE_PACKAGER. `measure` is the complexity probe, injectable for tests.
  */
-export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT, packager = process.env.PIPELINE_PACKAGER, image = process.env.PIPELINE_IMAGE }) {
+export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT, packager = process.env.PIPELINE_PACKAGER, image = process.env.PIPELINE_IMAGE, measure = measureComplexity }) {
   const kind = packagerKind(packager)
   const staging = (ctx) => join(origin, `.tmp-${ctx.meta.uploadId}`)
 
@@ -83,6 +84,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
 
       const prior = await readJob(jobFile)
       if (prior?.status === 'normalised' && (await exists(mezzanine))) {
+        ctx.shared.fps = prior.normalise?.fps
         const bytes = (await stat(mezzanine)).size
         return { status: 'cached', summary: `already normalised (${key}), ${mb(bytes)}`, result: { key, decisions: prior.normalise, mezzanineBytes: bytes } }
       }
@@ -102,10 +104,53 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
       await writeJob(jobFile, { ...record, status: 'normalised', errors: [], warnings: verdict.warnings, normalise: plan.decisions, mezzanine: 'mezzanine.mkv' })
       const bytes = (await stat(mezzanine)).size
       const d = plan.decisions
+      ctx.shared.fps = d.fps
       const bits = [`${d.fps} fps constant`, d.audio.synthesised ? 'silent audio added' : 'audio kept']
       if (d.tonemapped) bits.push('HDR tonemapped')
       if (d.rotated) bits.push(`rotated ${d.rotated}°`)
       return { summary: `${bits.join(', ')}, ${mb(bytes)}`, result: { key, decisions: d, mezzanineBytes: bytes } }
+    },
+
+    async ladder(ctx, h) {
+      const { info } = ctx.shared
+      // Even, because the mezzanine's dimensions are (normalise rounds them down).
+      const sourceHeight = Math.floor(info.video.displayHeight / 2) * 2
+      const fixed = selectRungs(sourceHeight)
+      const fallback = (why) => {
+        ctx.shared.ladder = { rungs: fixed, crf: null }
+        return { summary: `${fixed.map((r) => `${r.height}p`).join(', ')} · fixed ladder${why ? ` (${why})` : ''}`, result: { rungs: fixed, fixed: true, reason: why ?? null } }
+      }
+      // package.sh has its own table, so a measured ladder would only be a claim about a different encode.
+      if (kind !== 'shaka') return fallback('the ffmpeg packager uses a fixed table')
+      const fps = ctx.shared.fps
+      if (!fps) return fallback('frame rate unknown')
+      let probe
+      try {
+        probe = await measure({
+          mezzanine: ctx.shared.mezzanine,
+          duration: info.duration,
+          heights: candidateHeights(sourceHeight),
+          crf: LADDER_CRF,
+          gop: gopFrames(fps),
+          tmp: join(work, `.ladder-${ctx.meta.uploadId}`),
+          onProgress: h.progress,
+        })
+      } catch (e) {
+        // A failed measurement must not fail the upload: the fixed ladder is always a valid answer.
+        h.log(`complexity probe failed: ${e.message}`)
+        return fallback('complexity probe failed')
+      }
+      const plan = planLadder(probe.measured, { aspect: info.video.displayWidth / info.video.displayHeight, fps })
+      ctx.shared.ladder = { rungs: plan.rungs, crf: LADDER_CRF }
+      const lo = plan.rungs[0].kbps
+      const hi = plan.rungs[plan.rungs.length - 1].kbps
+      return {
+        summary: `${plan.rungs.length} rungs, ${lo}–${hi} kbps · ${plan.class} content`,
+        result: {
+          rungs: plan.rungs, class: plan.class, bpp: Number(plan.bpp.toFixed(4)), crf: LADDER_CRF,
+          measured: probe.measured, dropped: plan.dropped, sampledSeconds: Number(probe.seconds.toFixed(1)), fixed: false,
+        },
+      }
     },
 
     async package(ctx, h) {
@@ -113,14 +158,15 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
       const { info, mezzanine } = ctx.shared
       await rm(stage, { recursive: true, force: true })
       await mkdir(stage, { recursive: true }) // the container needs it to exist to mount it
-      // Even, because the mezzanine's dimensions are (normalise rounds them down).
       const sourceHeight = Math.floor(info.video.displayHeight / 2) * 2
+      const ladder = ctx.shared.ladder ?? { rungs: selectRungs(sourceHeight), crf: null }
       const { cmd, args, env } = packageCommand({
         kind,
         mezzanine,
         stage,
         outputId: ctx.meta.outputId,
-        rungs: selectRungs(sourceHeight),
+        rungs: ladder.rungs,
+        crf: ladder.crf,
         sourceHeight,
         scriptsDir: SCRIPTS_DIR,
         packageScript,

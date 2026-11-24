@@ -31,7 +31,7 @@ test('runs every stage in dependency order and ends successful', async () => {
   const order = []
   const steps = Object.fromEntries(Object.keys(allOk()).map((id) => [id, async () => { order.push(id); return { summary: id } }]))
   const final = await runJob(withUpload(fresh()), steps, {})
-  assert.deepEqual(order, ['probe', 'validate', 'normalise', 'package', 'verify', 'publish'])
+  assert.deepEqual(order, ['probe', 'validate', 'normalise', 'ladder', 'package', 'verify', 'publish'])
   assert.equal(final.status, 'success')
   assert.ok(final.stages.every((s) => s.status === 'success' && s.progress === 1))
 })
@@ -44,7 +44,7 @@ test('a failing stage records its code and skips everything downstream', async (
   const final = await runJob(withUpload(fresh()), steps, {})
   assert.deepEqual(statuses(final), {
     upload: 'success', probe: 'success', validate: 'failed',
-    normalise: 'skipped', package: 'skipped', verify: 'skipped', publish: 'skipped',
+    normalise: 'skipped', ladder: 'skipped', package: 'skipped', verify: 'skipped', publish: 'skipped',
   })
   const failed = final.stages.find((s) => s.id === 'validate')
   assert.equal(failed.summary, 'audio-only input')

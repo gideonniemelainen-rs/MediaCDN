@@ -49,7 +49,7 @@ The telemetry table marks the best value per metric when quadrants play the same
 
 ## Ingest
 
-Uploads go through `pipeline/`: probe, validate, normalise (to a constant-frame-rate, SDR, stereo mezzanine), package, verify, publish into `origin/ugc-<name>/`. Two packagers write the same layout: `scripts/package.sh` (ffmpeg, the default) and `pipeline/scripts/package-shaka.sh` in the worker image (Shaka Packager, CMAF). Each job and stage is recorded in the database. See `plans/transcoding-pipeline.md` and `plans/upload-page.md`.
+Uploads go through `pipeline/`: probe, validate, normalise (to a constant-frame-rate, SDR, stereo mezzanine), ladder (a CRF probe picks per-title rungs and rates, so screen recordings cost a fraction of film; Shaka path only), package, verify, publish into `origin/ugc-<name>/`. Two packagers write the same layout: `scripts/package.sh` (ffmpeg, the default) and `pipeline/scripts/package-shaka.sh` in the worker image (Shaka Packager, CMAF). Each job and stage is recorded in the database. See `plans/transcoding-pipeline.md` and `plans/upload-page.md`.
 
 ## Accounts and history
 

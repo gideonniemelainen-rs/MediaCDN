@@ -8,6 +8,7 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { parseMediaPlaylist } from '../../tools/live.mjs'
+import { LADDER_CRF } from './ladder.mjs'
 import { DEFAULT_IMAGE } from './packagers.mjs'
 import { createPipelineServer } from './server.mjs'
 import { createSteps } from './steps.mjs'
@@ -130,6 +131,29 @@ test('a short 360p clip and a silent screen recording package too', { skip }, as
   assert.match(await readFile(join(t.origin, 'ugc-screen-silent', 'master.m3u8'), 'utf8'), /TYPE=AUDIO/)
 })
 
+test('the ladder stage measures the title and the packaged rungs are exactly what it chose', { skip }, async () => {
+  const t = await start('ladder')
+  const busy = await t.run('long.mp4')
+  const l = stage(busy, 'ladder')
+  assert.equal(l.status, 'success')
+  assert.equal(l.result.fixed, false)
+  assert.equal(l.result.crf, LADDER_CRF)
+  assert.deepEqual(stage(busy, 'package').result.rungs, l.result.rungs, 'package encodes the ladder, not the fixed table')
+  assert.deepEqual(l.result.measured.map((m) => m.height), [240, 360, 480, 720])
+  assert.match(l.summary, /rungs, \d+–\d+ kbps · (film|screen) content/)
+  // Capped CRF: no rendition's peak may exceed its VBV cap (1.5x the rung rate) by more than muxing overhead.
+  const peaks = stage(busy, 'verify').result.renditions.map((r) => r.bandwidth)
+  l.result.rungs.forEach((r, i) => assert.ok(peaks[i] <= r.kbps * 1000 * 1.5 * 1.3, `rung ${r.height}p peaks at ${peaks[i]} against a cap of ${r.kbps * 1500}`))
+
+  // A flat, silent screen recording is far cheaper than the fixed ladder and loses 240p.
+  const flat = await t.run('screen-silent.mp4')
+  const lf = stage(flat, 'ladder')
+  assert.equal(lf.result.class, 'screen')
+  assert.ok(!lf.result.rungs.some((r) => r.height < 360))
+  assert.ok(lf.result.rungs.at(-1).kbps < 800, `${lf.result.rungs.at(-1).kbps} kbps for 360p, the fixed table says 800`)
+  assert.deepEqual(stage(flat, 'package').result.rungs, lf.result.rungs)
+})
+
 test('uploading the same file again reuses the mezzanine and republishes', { skip }, async () => {
   const t = await start('again')
   await t.run('clean.mp4')
@@ -145,7 +169,7 @@ test('a missing worker image fails the package stage with a readable reason and 
   assert.equal(job.status, 'failed')
   assert.equal(stage(job, 'package').status, 'failed')
   assert.equal(stage(job, 'package').result.code, 'E_PACKAGE_FAILED')
-  assert.deepEqual(states(job).slice(5), ['skipped', 'skipped'])
+  assert.deepEqual(states(job).slice(6), ['skipped', 'skipped'])
   const left = await readdir(t.origin).catch(() => [])
   assert.deepEqual(left, [], 'nothing staged or published')
 })
