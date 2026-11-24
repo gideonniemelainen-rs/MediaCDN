@@ -1,6 +1,6 @@
 # Transport comparison: HTTP/1.1 vs HTTP/2 vs HTTP/3 (QUIC)
 
-Status: planned, not started (2026-11-19).
+Status: milestone 1 (capture the negotiated transport) built and browser-checked 2026-11-24; milestones 2 to 4 not started. In the browser, all 17 local requests were recorded as `h1` with connect and first-byte times, and all 17 S3 near requests as `unknown` with null timings, because the bucket sends no `Timing-Allow-Origin`. The Resource Timing join worked with the retry schedule (0, 50, 150, 400 ms); no local request stayed `unknown`. Not yet tried: h2 or h3 (needs the Caddy lab), and range requests sharing a URL under load (covered only by unit tests).
 
 Goal: record which HTTP version each request actually used, and compare h1, h2 and h3 live in the four-quadrant player and in the telemetry export.
 

@@ -41,6 +41,13 @@ try {
     assert.equal(r.headers.get('cache-control'), 'no-cache')
   })
 
+  await check('Timing-Allow-Origin and the diagnostic headers are exposed', async () => {
+    const r = await fetch(`${B}/${slug}/master.m3u8`, { headers: { Origin: 'http://localhost:5173' } })
+    assert.equal(r.headers.get('timing-allow-origin'), '*')
+    const exposed = r.headers.get('access-control-expose-headers').toLowerCase()
+    for (const h of ['content-range', 'alt-svc', 'age', 'x-cache', 'via']) assert.ok(exposed.includes(h), `${h} not exposed`)
+  })
+
   await check('segment: byte range gives 206 and Content-Range', async () => {
     const r = await fetch(`${B}/${slug}/chunk-${n}-00001.m4s`, { headers: { Range: 'bytes=0-99' } })
     assert.equal(r.status, 206)

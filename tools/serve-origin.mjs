@@ -25,7 +25,9 @@ const TYPES = {
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'Range, Origin, Accept',
-  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges',
+  'Access-Control-Expose-Headers': 'Content-Length, Content-Range, Accept-Ranges, Alt-Svc, Age, X-Cache, Via, Cache-Control, Server',
+  // Without this, cross-origin Resource Timing hides the negotiated protocol (nextHopProtocol) and the timings.
+  'Timing-Allow-Origin': '*',
 }
 
 function safePath(rel) {
