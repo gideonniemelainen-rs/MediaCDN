@@ -1,4 +1,4 @@
-import { DELIVERY_LABEL, type Delivery } from './catalog'
+import { DELIVERY_LABEL, type Delivery } from './deliveries'
 import { summarize } from './telemetry/metrics'
 import { telemetry } from './telemetry/store'
 import { useTelemetryVersion } from './telemetry/useTelemetry'

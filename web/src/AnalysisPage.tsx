@@ -1,6 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useAuth } from './auth/useAuth'
-import { DELIVERY_LABEL, type Delivery } from './catalog'
+import { DELIVERY_LABEL, type Delivery } from './deliveries'
 import { deleteRun, fetchRuns, fetchUploads } from './history/api'
 import { formatAge, mergeUploads, playerHref } from './history/format'
 import { describeRun } from './history/run'

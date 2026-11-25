@@ -1,4 +1,4 @@
-import type { Delivery, Transport } from './catalog'
+import type { Delivery, Transport } from './deliveries'
 
 export const SLOT_COUNT = 4
 

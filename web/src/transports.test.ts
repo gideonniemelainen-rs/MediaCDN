@@ -16,7 +16,8 @@ afterEach(() => {
 async function catalogWith(env: Record<string, string>) {
   for (const [k, v] of Object.entries(env)) vi.stubEnv(k, v)
   vi.resetModules()
-  return import('./catalog')
+  // Both modules, loaded after the reset so they share one fresh copy of the env-built table.
+  return { ...(await import('./catalog')), ...(await import('./deliveries')) }
 }
 
 describe('transport state', () => {

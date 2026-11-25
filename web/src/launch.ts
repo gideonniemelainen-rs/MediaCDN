@@ -1,7 +1,7 @@
 // Initial state requested through the URL, e.g. /?delivery=local&stream=ugc-demo-hls, which is how
 // the upload page opens a freshly published title in the player. Pure.
 import { isSafeId } from '@shared/title-layout.ts'
-import { DELIVERIES, type Delivery } from './catalog'
+import { DELIVERIES, type Delivery } from './deliveries'
 
 export interface Launch {
   delivery?: Delivery

@@ -1,18 +1,8 @@
 import type { TitleIndex } from '@shared/title-layout.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  CATALOG,
-  clearIndexes,
-  findStream,
-  indexStatus,
-  indexUrl,
-  loadIndex,
-  pickForPreset,
-  resolveStream,
-  setIndex,
-  streamsFor,
-  streamsFromIndexes,
-} from './catalog'
+import { CATALOG, resolveStream, streamsFromIndexes } from './catalog'
+import { indexUrl } from './deliveries'
+import { clearIndexes, findStream, indexStatus, loadIndex, pickForPreset, setIndex, streamsFor } from './indexStore'
 
 const LOCAL_INDEX: TitleIndex = {
   version: 1,

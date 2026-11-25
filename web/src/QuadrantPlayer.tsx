@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import shaka from 'shaka-player'
 import { UNFOCUSED_MAX_HEIGHT } from '@shared/ladder.ts'
-import { DELIVERY_LABEL, type Delivery, type Resolved } from './catalog'
+import { type Resolved } from './catalog'
+import { DELIVERY_LABEL, type Delivery } from './deliveries'
 import { Controls } from './Controls'
 import { attachTelemetry, recordAbrCap, recordLoadStart } from './telemetry/shaka'
 

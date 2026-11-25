@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import { type Delivery, catalogVersion, indexStatus, isIndexed, loadIndex, subscribeCatalog } from './catalog'
+import { type Delivery, isIndexed } from './deliveries'
+import { catalogVersion, indexStatus, loadIndex, subscribeCatalog } from './indexStore'
 
 /**
  * Loads the title index of every delivery in use (each quadrant has its own) and re-renders when

@@ -1,10 +1,9 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
-import {
-  DELIVERIES, DELIVERY_LABEL, TRANSPORTS, type Delivery, type Transport, findStream, isIndexed, loadIndex, pickForPreset, resolveStream,
-  streamForDelivery, streamsFor, transportProblem,
-} from './catalog'
+import { resolveStream } from './catalog'
+import { DELIVERIES, DELIVERY_LABEL, TRANSPORTS, type Delivery, type Transport, isIndexed, transportProblem } from './deliveries'
+import { findStream, loadIndex, pickForPreset, streamForDelivery, streamsFor } from './indexStore'
 import { useCatalogs } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'

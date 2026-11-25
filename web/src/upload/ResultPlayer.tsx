@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import shaka from 'shaka-player'
-import { catalogVersion, findStream, loadIndex, resolveStream, subscribeCatalog } from '../catalog'
+import { resolveStream } from '../catalog'
+import { catalogVersion, findStream, loadIndex, subscribeCatalog } from '../indexStore'
 
 /**
  * Plays a freshly published title through the same path the main app uses: reload the local

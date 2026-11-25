@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { DELIVERY_LABEL, type Delivery } from '../catalog'
+import { DELIVERY_LABEL, type Delivery } from '../deliveries'
 import { SummaryTable } from '../telemetry/SummaryTable'
 import { fetchRunEvents } from './api'
 import { rebuildRows, type RebuiltRow } from './run'

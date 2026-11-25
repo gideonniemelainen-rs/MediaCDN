@@ -1,9 +1,8 @@
 // Per-quadrant delivery: the choices that let one title be compared across several sources.
 import type { TitleIndex } from '@shared/title-layout.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  DELIVERIES, DELIVERY_LABEL, INDEXED_DELIVERIES, clearIndexes, indexStatus, isIndexed, loadIndex, setIndex, streamForDelivery,
-} from './catalog'
+import { DELIVERIES, DELIVERY_LABEL, INDEXED_DELIVERIES, isIndexed } from './deliveries'
+import { clearIndexes, indexStatus, loadIndex, setIndex, streamForDelivery } from './indexStore'
 import { readLaunch } from './launch'
 import { SLOT_COUNT, initialState, reducer } from './state'
 

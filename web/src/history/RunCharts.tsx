@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { DELIVERY_LABEL, type Delivery } from '../catalog'
+import { DELIVERY_LABEL, type Delivery } from '../deliveries'
 import { LineChart, type ChartSeries } from './LineChart'
 import { buildSeries, capMismatch } from './series'
 import type { EventsBlob } from './types'

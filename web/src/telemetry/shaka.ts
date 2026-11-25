@@ -1,5 +1,5 @@
 import shaka from 'shaka-player'
-import type { Delivery } from '../catalog'
+import type { Delivery } from '../deliveries'
 import { telemetry } from './store'
 import { pickTiming, type TimingEntry } from './transport'
 

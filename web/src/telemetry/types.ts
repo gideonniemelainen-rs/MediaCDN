@@ -1,4 +1,4 @@
-import type { Delivery } from '../catalog'
+import type { Delivery } from '../deliveries'
 
 export type EventType =
   | 'load-start'
