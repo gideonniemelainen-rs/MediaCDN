@@ -7,7 +7,7 @@ import { writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { buildIndex } from './index-lib.mjs'
+import { DASH_MANIFEST, HLS_MASTER, buildIndex } from '../shared/src/title-layout.ts'
 
 const run = promisify(execFile)
 const bucket = process.env.S3_BUCKET
@@ -23,7 +23,7 @@ const slugs = (top?.CommonPrefixes ?? []).map((p) => p.Prefix.slice('media/'.len
 const listing = []
 for (const slug of slugs) {
   const files = []
-  for (const name of ['master.m3u8', 'manifest.mpd']) {
+  for (const name of [HLS_MASTER, DASH_MANIFEST]) {
     const key = `media/${slug}/${name}`
     const r = await aws('s3api', 'list-objects-v2', '--bucket', bucket, '--prefix', key, '--max-items', '1')
     if (r?.Contents?.some((o) => o.Key === key)) files.push(name)

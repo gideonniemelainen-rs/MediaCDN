@@ -7,7 +7,9 @@
 #   (video rungs 0..n-1, audio n).
 # Env: INPUT mezzanine, OUT output directory, RUNGS "360:800:1200:1600 720:2800:4200:5600" (height:kbps:maxrate:bufsize, from shared/src/ladder.ts encodeSpec),
 #      CRF (optional) constant quality: each rung is then capped at 1.5x its kbps (VBV) instead of aimed at it,
-#      PRINT_ARGS=1 prints the filter graph and the per-rung ffmpeg arguments, one per line, and exits before encoding
+#      INIT_TEMPLATE, CHUNK_TEMPLATE, PLAYLIST_TEMPLATE, HLS_MASTER, DASH_MANIFEST (required) the file names, from
+#      shared/src/title-layout.ts (packagerEnv); `$Rep$` in a template is the representation number,
+#      PRINT_ARGS=1 prints the filter graph, the per-rung ffmpeg arguments and the packager arguments, one per line, and exits before encoding
 #      (the test hook that checks the script uses the rungs it is given; it still reads INPUT's frame rate),
 #      SLUG and SRC_H for the log line, SEG segment seconds (default 4), PROGRESS for ffmpeg -progress.
 set -euo pipefail
@@ -18,6 +20,13 @@ rungs=${RUNGS:?RUNGS is required}
 slug=${SLUG:-title}
 SEG=${SEG:-4}
 tmp="$out/.rungs"
+init_template=${INIT_TEMPLATE:?INIT_TEMPLATE is required (see shared/src/title-layout.ts, packagerEnv)}
+chunk_template=${CHUNK_TEMPLATE:?CHUNK_TEMPLATE is required (see shared/src/title-layout.ts, packagerEnv)}
+playlist_template=${PLAYLIST_TEMPLATE:?PLAYLIST_TEMPLATE is required (see shared/src/title-layout.ts, packagerEnv)}
+hls_master=${HLS_MASTER:?HLS_MASTER is required (see shared/src/title-layout.ts, packagerEnv)}
+dash_manifest=${DASH_MANIFEST:?DASH_MANIFEST is required (see shared/src/title-layout.ts, packagerEnv)}
+# Fills `$Rep$` in a name template with the representation number in $2.
+expand() { local t=$1; printf '%s' "${t//'$Rep$'/$2}"; }
 
 [ -f "$in" ] || { echo "missing $in" >&2; exit 1; }
 [ -n "${PRINT_ARGS:-}" ] || mkdir -p "$out" "$tmp"
@@ -54,8 +63,17 @@ for r in "$@"; do
   i=$((i + 1))
 done
 
+pk=()
+for i in $(seq 0 $((n - 1))); do
+  pk+=("in=$tmp/v$i.mp4,stream=video,init_segment=$out/$(expand "$init_template" "$i"),segment_template=$out/$(expand "$chunk_template" "$i"),playlist_name=$(expand "$playlist_template" "$i")")
+done
+# lang=en and --default_language: without them the only audio rendition is DEFAULT=NO.
+pk+=("in=$tmp/a.mp4,stream=audio,init_segment=$out/$(expand "$init_template" "$n"),segment_template=$out/$(expand "$chunk_template" "$n"),playlist_name=$(expand "$playlist_template" "$n"),lang=en,hls_group_id=audio,hls_name=main")
+pkflags=(--quiet --segment_duration "$SEG" --generate_static_live_mpd --default_language en
+  --hls_master_playlist_output "$out/$hls_master" --hls_playlist_type VOD --mpd_output "$out/$dash_manifest")
+
 if [ -n "${PRINT_ARGS:-}" ]; then
-  printf '%s\n' "$filter" "${args[@]}"
+  printf '%s\n' "$filter" "${args[@]}" "${pk[@]}" "${pkflags[@]}"
   exit 0
 fi
 
@@ -66,18 +84,8 @@ ffmpeg -hide_banner -loglevel warning ${progress[@]+"${progress[@]}"} -y -i "$in
   -filter_complex "$filter" "${args[@]}" \
   -map 0:a:0 -vn -c:a aac -b:a 128k -ac 2 -ar 48000 "$tmp/a.mp4"
 
-pk=()
-for i in $(seq 0 $((n - 1))); do
-  pk+=("in=$tmp/v$i.mp4,stream=video,init_segment=$out/init-$i.m4s,segment_template=$out/chunk-$i-\$Number%05d\$.m4s,playlist_name=media_$i.m3u8")
-done
-# lang=en and --default_language: without them the only audio rendition is DEFAULT=NO.
-pk+=("in=$tmp/a.mp4,stream=audio,init_segment=$out/init-$n.m4s,segment_template=$out/chunk-$n-\$Number%05d\$.m4s,playlist_name=media_$n.m3u8,lang=en,hls_group_id=audio,hls_name=main")
-
 # --generate_static_live_mpd: otherwise the MPD is type="dynamic" with a minimumUpdatePeriod.
-packager "${pk[@]}" --quiet \
-  --segment_duration "$SEG" --generate_static_live_mpd --default_language en \
-  --hls_master_playlist_output "$out/master.m3u8" --hls_playlist_type VOD \
-  --mpd_output "$out/manifest.mpd"
+packager "${pk[@]}" "${pkflags[@]}"
 
 rm -rf "$tmp"
 echo "done: $(ls "$out" | wc -l | tr -d ' ') files, $(du -sh "$out" | cut -f1)"

@@ -1,7 +1,6 @@
-// Pure helpers for the package, verify and publish stages. These reuse the origin's own parsing
-// (tools/live.mjs, tools/index-lib.mjs), so "verified" means "the origin and player can use it".
-import { buildIndex } from '../../tools/index-lib.mjs'
-import { parseMediaPlaylist } from '../../tools/live.mjs'
+// Pure helpers for the package, verify and publish stages. These use the Title layout module the origin and the
+// player use (shared/src/title-layout.ts), so "verified" means "the origin and player can use it".
+import { DASH_MANIFEST, HLS_MASTER, buildIndex, parseMediaPlaylist } from '../../shared/src/title-layout.ts'
 
 const MAX_SEGMENT_SECONDS = 6
 
@@ -38,8 +37,8 @@ export function verifyPackage({ id, files, master, playlists, mpd }) {
   const checks = []
   const check = (name, ok, detail) => checks.push({ name, ok, ...(detail && { detail }) })
 
-  check('HLS master present', names.has('master.m3u8'))
-  check('DASH manifest present', names.has('manifest.mpd'))
+  check('HLS master present', names.has(HLS_MASTER))
+  check('DASH manifest present', names.has(DASH_MANIFEST))
   check('Video renditions in master', renditions.length > 0, `${renditions.length} renditions`)
   check('Audio rendition in master', audio.length > 0)
   const missing = referenced.filter((u) => !(u in playlists))

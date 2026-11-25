@@ -13,7 +13,7 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { parseArgs } from 'node:util'
 import { monthlyCost, breakEvenGb, cacheStatus, summarizeTarget } from './bench-lib.mjs'
-import { parseMediaPlaylist } from './live.mjs'
+import { HLS_MASTER, mediaPlaylistRep, parseMediaPlaylist } from '../shared/src/title-layout.ts'
 import { readFile } from 'node:fs/promises'
 
 const { values } = parseArgs({
@@ -54,8 +54,8 @@ async function timed(url, kind) {
 
 // Segment list for the benchmark: taken from the local packaged playlist so every target fetches
 // identical objects regardless of which one is being tested.
-const master = await readFile(new URL(`../origin/${values.slug}/master.m3u8`, import.meta.url), 'utf8')
-const media = [...master.matchAll(/^(media_\d+\.m3u8)$/gm)].map((m) => m[1])
+const master = await readFile(new URL(`../origin/${values.slug}/${HLS_MASTER}`, import.meta.url), 'utf8')
+const media = master.split(/\r?\n/).filter((l) => mediaPlaylistRep(l) !== null)
 const rungs = await Promise.all(
   media.map(async (f) => ({ file: f, ...parseMediaPlaylist(await readFile(new URL(`../origin/${values.slug}/${f}`, import.meta.url), 'utf8')) })),
 )
@@ -70,7 +70,7 @@ for (let round = 0; round < ROUNDS; round++) {
   const order = targets.map((_, i) => targets[(i + round) % targets.length])
   for (const t of order) {
     const batch = []
-    batch.push(await timed(`${t.base}/${values.slug}/master.m3u8`, 'manifest'))
+    batch.push(await timed(`${t.base}/${values.slug}/${HLS_MASTER}`, 'manifest'))
     batch.push(await timed(`${t.base}/${values.slug}/${rung.file}`, 'manifest'))
     for (const s of segs) batch.push(await timed(`${t.base}/${values.slug}/${s}`, 'segment'))
     samples[t.name].push(...batch)

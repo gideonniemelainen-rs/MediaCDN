@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // Local origin for packaged media: static files from origin/ with CORS and byte ranges, plus a
 // simulated live stream at /live/<slug>/ built from the packaged HLS by tools/live.mjs.
+// File names and the index document come from shared/src/title-layout.ts.
 // Usage: node tools/serve-origin.mjs [port]   (default 8788)
 import { createReadStream } from 'node:fs'
 import { readFile, readdir, stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { buildIndex } from './index-lib.mjs'
-import { buildLivePlaylist, liveSegmentFile, parseMediaPlaylist } from './live.mjs'
+import { DASH_MANIFEST, buildIndex, mediaPlaylist, mediaPlaylistRep, parseLivePath, parseLiveSegment, parseMediaPlaylist } from '../shared/src/title-layout.ts'
+import { buildLivePlaylist, liveSegmentFile } from './live.mjs'
 
 const ROOT = fileURLToPath(new URL('../origin/', import.meta.url))
 const PORT = Number(process.argv[2] ?? 8788)
@@ -91,22 +92,22 @@ async function vodPlaylist(slug, file) {
 
 /** /live/<slug>/<file>: generated media playlists and mapped segments; everything else is passed through. */
 async function serveLive(req, res, slug, file) {
-  const m = /^media_(\d+)\.m3u8$/.exec(file)
-  if (m) {
+  const rep = mediaPlaylistRep(file)
+  if (rep !== null) {
     const parsed = await vodPlaylist(slug, file)
     if (!parsed) return send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
-    const { text } = buildLivePlaylist(parsed, EPOCH, Date.now(), `live${m[1]}`)
+    const { text } = buildLivePlaylist(parsed, EPOCH, Date.now(), rep)
     if (!text) return send(res, 404, { 'Content-Type': 'text/plain', 'Retry-After': '2' }, 'live not started yet')
     return send(res, 200, { 'Content-Type': TYPES['.m3u8'], 'Cache-Control': 'no-cache' }, text)
   }
-  const seg = /^live(\d+)-\d+\.m4s$/.exec(file)
+  const seg = parseLiveSegment(file)
   if (seg) {
-    const parsed = await vodPlaylist(slug, `media_${seg[1]}.m3u8`)
-    const real = parsed && liveSegmentFile(parsed, file, `live${seg[1]}`)
+    const parsed = await vodPlaylist(slug, mediaPlaylist(seg.rep))
+    const real = parsed && liveSegmentFile(parsed, file, seg.rep)
     const path = real && safePath(join(slug, real))
     return path ? serveFile(req, res, path) : send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
   }
-  const path = file === 'manifest.mpd' ? null : safePath(join(slug, file)) // no DASH live (see docs)
+  const path = file === DASH_MANIFEST ? null : safePath(join(slug, file)) // no DASH live (see docs)
   return path ? serveFile(req, res, path) : send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
 }
 
@@ -119,8 +120,8 @@ createServer(async (req, res) => {
       return send(res, 200, { 'Content-Type': TYPES['.json'], 'Cache-Control': 'no-cache' }, JSON.stringify(await localIndex()))
     }
     const rel = decodeURIComponent(url.pathname).replace(/^\/+/, '')
-    const live = /^live\/([\w-]+)\/([\w.-]+)$/.exec(rel)
-    if (live) return await serveLive(req, res, live[1], live[2])
+    const live = parseLivePath(rel)
+    if (live) return await serveLive(req, res, live.slug, live.file)
     const path = safePath(rel)
     if (!path) return send(res, 403, {}, 'forbidden')
     await serveFile(req, res, path)

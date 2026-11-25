@@ -8,6 +8,7 @@ import { execFileSync, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { encodeSpec, selectRungs } from '../shared/src/ladder.ts'
+import { packagerEnv } from '../shared/src/title-layout.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -35,7 +36,7 @@ export function packageTitle({ slug, quick = false, env = process.env }) {
   const rungs = selectRungs(height, { quick })
   const run = spawnSync('bash', [join(root, 'scripts/package.sh'), slug], {
     stdio: 'inherit',
-    env: { ...env, INPUT: input, RUNGS: encodeSpec(rungs), SRC_H: String(height) },
+    env: { ...env, INPUT: input, RUNGS: encodeSpec(rungs), SRC_H: String(height), ...packagerEnv() },
   })
   return run.status ?? 1
 }

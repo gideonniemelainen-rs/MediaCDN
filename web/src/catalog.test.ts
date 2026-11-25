@@ -1,13 +1,12 @@
+import type { TitleIndex } from '@shared/title-layout.ts'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   CATALOG,
-  type TitleIndex,
   clearIndexes,
   findStream,
   indexStatus,
   indexUrl,
   loadIndex,
-  parseIndex,
   pickForPreset,
   resolveStream,
   setIndex,
@@ -46,27 +45,6 @@ describe('public streams (direct)', () => {
   it('has unique ids, and attribution and license on every stream', () => {
     expect(new Set(CATALOG.map((s) => s.id)).size).toBe(CATALOG.length)
     for (const s of CATALOG) expect(s.license && s.attribution && s.sourceUrl).toBeTruthy()
-  })
-})
-
-describe('parseIndex', () => {
-  it('accepts a valid index and drops unsafe ids and unknown protocols', () => {
-    const idx = parseIndex({
-      version: 1,
-      titles: [
-        { id: 'ok', protocols: ['hls', 'smooth'] },
-        { id: '../evil', protocols: ['hls'] },
-        { id: 'none', protocols: ['smooth'] },
-        { id: 'x', protocols: 'hls' },
-      ],
-    })
-    expect(idx.titles).toEqual([{ id: 'ok', protocols: ['hls'] }])
-  })
-
-  it('rejects documents that are not an index', () => {
-    expect(() => parseIndex({ titles: [] })).toThrow(/not a title index/)
-    expect(() => parseIndex(null)).toThrow()
-    expect(() => parseIndex({ version: 2, titles: [] })).toThrow()
   })
 })
 

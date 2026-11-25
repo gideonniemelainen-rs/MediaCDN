@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { buildLivePlaylist, liveSegmentFile, parseMediaPlaylist } from './live.mjs'
+import { parseMediaPlaylist } from '../shared/src/title-layout.ts'
+import { buildLivePlaylist, liveSegmentFile } from './live.mjs'
 
 // Segments of 4, 4 and 3 s: an 11 s loop.
 const LOOP = 11
@@ -17,14 +18,8 @@ chunk-0-00003.m4s
 `
 const parsed = parseMediaPlaylist(VOD)
 const EPOCH = Date.parse('2026-01-01T00:00:00Z')
-const at = (s) => buildLivePlaylist(parsed, EPOCH, EPOCH + s * 1000, 'live0')
+const at = (s) => buildLivePlaylist(parsed, EPOCH, EPOCH + s * 1000, 0)
 const uris = (t) => t.split('\n').filter((l) => l.startsWith('live0-'))
-
-test('parses init, durations and URIs', () => {
-  assert.equal(parsed.init, 'init-0.m4s')
-  assert.deepEqual(parsed.segments.map((s) => s.duration), [4, 4, 3])
-  assert.equal(parsed.segments[2].uri, 'chunk-0-00003.m4s')
-})
 
 test('nothing is available before the first segment completes', () => {
   assert.equal(at(3.9).text, '')
@@ -73,8 +68,8 @@ test('program date time follows the loop timeline', () => {
 })
 
 test('maps live segment URIs back to VOD files', () => {
-  assert.equal(liveSegmentFile(parsed, 'live0-0.m4s', 'live0'), 'chunk-0-00001.m4s')
-  assert.equal(liveSegmentFile(parsed, 'live0-5.m4s', 'live0'), 'chunk-0-00003.m4s')
-  assert.equal(liveSegmentFile(parsed, 'live0-3.m4s', 'live0'), 'chunk-0-00001.m4s')
-  assert.equal(liveSegmentFile(parsed, 'evil/../x.m4s', 'live0'), null)
+  assert.equal(liveSegmentFile(parsed, 'live0-0.m4s', 0), 'chunk-0-00001.m4s')
+  assert.equal(liveSegmentFile(parsed, 'live0-5.m4s', 0), 'chunk-0-00003.m4s')
+  assert.equal(liveSegmentFile(parsed, 'live0-3.m4s', 0), 'chunk-0-00001.m4s')
+  assert.equal(liveSegmentFile(parsed, 'evil/../x.m4s', 0), null)
 })

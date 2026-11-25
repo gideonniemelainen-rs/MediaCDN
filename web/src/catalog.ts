@@ -1,3 +1,5 @@
+import { indexLocation, liveLocation, parseIndex, titleLocation, type TitleIndex } from '@shared/title-layout.ts'
+
 export type StreamKind = 'VOD' | 'LIVE'
 export type Protocol = 'progressive' | 'hls' | 'dash'
 
@@ -212,17 +214,6 @@ export function resolveStream(stream: Stream, delivery: Delivery, transport?: Tr
 // ---------------------------------------------------------------------------------------------
 // Title indexes: what each packaged origin currently offers.
 
-export interface IndexTitle {
-  id: string
-  protocols: ('hls' | 'dash')[]
-  /** The origin can also serve this title as simulated live (local only). */
-  live?: boolean
-}
-export interface TitleIndex {
-  version: 1
-  generatedAt?: string
-  titles: IndexTitle[]
-}
 export type IndexStatus = { state: 'idle' } | { state: 'loading' } | { state: 'ready'; count: number } | { state: 'error'; message: string }
 
 /** Deliveries whose titles come from an index, with the path prefix their index and media live under. */
@@ -236,21 +227,6 @@ const BASE_VAR: Partial<Record<Delivery, string>> = {
 /** The indexed deliveries, in picker order. */
 export const INDEXED_DELIVERIES = DELIVERIES.filter((d) => d in INDEX_PREFIX)
 export const isIndexed = (d: Delivery) => d in INDEX_PREFIX
-
-const SAFE_ID = /^[a-z0-9][a-z0-9-]*$/
-
-/** Validates an index document; unknown protocols and unsafe ids are dropped, a bad shape throws. */
-export function parseIndex(json: unknown): TitleIndex {
-  const j = json as { version?: unknown; generatedAt?: unknown; titles?: unknown } | null
-  if (!j || j.version !== 1 || !Array.isArray(j.titles)) throw new Error('not a title index (expected version 1 and titles[])')
-  const titles: IndexTitle[] = []
-  for (const t of j.titles as Partial<IndexTitle>[]) {
-    if (typeof t?.id !== 'string' || !SAFE_ID.test(t.id) || !Array.isArray(t.protocols)) continue
-    const protocols = t.protocols.filter((p): p is 'hls' | 'dash' => p === 'hls' || p === 'dash')
-    if (protocols.length) titles.push({ id: t.id, protocols, ...(t.live ? { live: true } : {}) })
-  }
-  return { version: 1, ...(typeof j.generatedAt === 'string' ? { generatedAt: j.generatedAt } : {}), titles }
-}
 
 const META = new Map(TITLES.map((t) => [t.id, t]))
 
@@ -277,20 +253,20 @@ export function streamsFromIndexes(indexes: ReadonlyMap<Delivery, TitleIndex>): 
       if (t.protocols.includes('hls')) {
         upsert(`${t.id}-hls`, () => ({ ...meta, id: `${t.id}-hls`, title: `${name} (HLS)`, kind: 'VOD', variants: {} }), delivery, {
           protocol: 'hls',
-          location: `${prefix}/${t.id}/master.m3u8`,
+          location: titleLocation(prefix, t.id, 'hls'),
         })
       }
       if (t.protocols.includes('dash')) {
         upsert(`${t.id}-dash`, () => ({ ...meta, id: `${t.id}-dash`, title: `${name} (DASH)`, kind: 'VOD', variants: {} }), delivery, {
           protocol: 'dash',
-          location: `${prefix}/${t.id}/manifest.mpd`,
+          location: titleLocation(prefix, t.id, 'dash'),
         })
       }
       if (t.live && delivery === 'local') {
         // only our local origin can simulate live; the flag is ignored elsewhere
         upsert(`live-${t.id}`, () => ({ ...meta, id: `live-${t.id}`, title: `${name} (simulated live, HLS)`, kind: 'LIVE', variants: {} }), delivery, {
           protocol: 'hls',
-          location: `/live/${t.id}/master.m3u8`,
+          location: liveLocation(t.id),
         })
       }
     }
@@ -339,7 +315,7 @@ function setStatus(d: Delivery, status: IndexStatus) {
 export function indexUrl(delivery: Delivery): string | undefined {
   const base = BASES[delivery]
   const prefix = INDEX_PREFIX[delivery]
-  return base && prefix !== undefined ? `${base}${prefix}/index.json` : undefined
+  return base && prefix !== undefined ? indexLocation(base, prefix) : undefined
 }
 
 const inflight = new Map<Delivery, Promise<void>>()

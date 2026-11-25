@@ -13,6 +13,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { HLS_MASTER } from '../shared/src/title-layout.ts'
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const FPS = 24
@@ -91,7 +92,7 @@ for (const ad of todo) {
 }
 
 // The inventory always lists every ad that is fully built, not just the ones generated this run.
-const built = ADS.filter((a) => existsSync(join(root, 'origin/ads', a.id, 'master.m3u8')) && existsSync(join(root, 'origin/ads', a.id, 'ad.mp4')))
+const built = ADS.filter((a) => existsSync(join(root, 'origin/ads', a.id, HLS_MASTER)) && existsSync(join(root, 'origin/ads', a.id, 'ad.mp4')))
 const inventory = {
   version: 1,
   ads: built.map((a) => ({
@@ -100,7 +101,7 @@ const inventory = {
     kind: a.kind,
     durationSec: a.durationSec,
     mp4: `/ads/${a.id}/ad.mp4`,
-    hls: `/ads/${a.id}/master.m3u8`,
+    hls: `/ads/${a.id}/${HLS_MASTER}`,
     ...(a.attribution ? { attribution: a.attribution } : {}),
   })),
 }

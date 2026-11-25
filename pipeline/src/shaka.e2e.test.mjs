@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { parseMediaPlaylist } from '../../tools/live.mjs'
+import { mediaPlaylist, parseMediaPlaylist } from '../../shared/src/title-layout.ts'
 import { LADDER_CRF } from '../../shared/src/ladder.ts'
 import { DEFAULT_IMAGE } from './packagers.mjs'
 import { createPipelineServer } from './server.mjs'
@@ -89,7 +89,7 @@ test('a long clip is packaged with Shaka Packager and passes every verify check'
 test('segments are 4 s and every one starts on a keyframe', { skip }, async () => {
   const dir = join(root, 'long-origin', 'ugc-long')
   for (const rung of [0, 3]) {
-    const playlist = parseMediaPlaylist(await readFile(join(dir, `media_${rung}.m3u8`), 'utf8'))
+    const playlist = parseMediaPlaylist(await readFile(join(dir, mediaPlaylist(rung)), 'utf8'))
     const durations = playlist.segments.map((s) => s.duration)
     assert.equal(durations.length, 4, durations.join())
     for (const d of durations.slice(0, -1)) assert.ok(Math.abs(d - 4) < 0.05, `${d}`)
@@ -106,7 +106,7 @@ test('segments are 4 s and every one starts on a keyframe', { skip }, async () =
 test('every rung has the right size and square pixels, tagged BT.709', { skip }, async () => {
   const dir = join(root, 'long-origin', 'ugc-long')
   for (const [i, h] of [240, 360, 480, 720].entries()) {
-    const playlist = parseMediaPlaylist(await readFile(join(dir, `media_${i}.m3u8`), 'utf8'))
+    const playlist = parseMediaPlaylist(await readFile(join(dir, mediaPlaylist(i)), 'utf8'))
     const probe = join(root, `size-${i}.mp4`)
     await writeFile(probe, Buffer.concat([await readFile(join(dir, playlist.init)), await readFile(join(dir, playlist.segments[0].uri))]))
     const [height, sar, trc, primaries, matrix] = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=height,sample_aspect_ratio,color_transfer,color_primaries,color_space', '-of', 'csv=p=0', probe]).toString().trim().split(',')

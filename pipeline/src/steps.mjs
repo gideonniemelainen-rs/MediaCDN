@@ -10,6 +10,7 @@ import { IngestError, isProgressNoise, jobPaths, normaliseFile, parseProgressLin
 import { PIPELINE_VERSION, jobKey } from './job.mjs'
 import { gopFrames, measureComplexity } from './complexity.mjs'
 import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from '../../shared/src/ladder.ts'
+import { DASH_MANIFEST, HLS_MASTER, mediaPlaylistRep, titleLocation } from '../../shared/src/title-layout.ts'
 import { chooseOutputId, verifyPackage } from './package.mjs'
 import { explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
@@ -203,10 +204,10 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
     async verify(ctx) {
       const stage = staging(ctx)
       const files = await readdir(stage)
-      const master = await readFile(join(stage, 'master.m3u8'), 'utf8').catch(() => '')
+      const master = await readFile(join(stage, HLS_MASTER), 'utf8').catch(() => '')
       const playlists = {}
-      for (const f of files.filter((n) => /^media_\d+\.m3u8$/.test(n))) playlists[f] = await readFile(join(stage, f), 'utf8')
-      const mpd = await readFile(join(stage, 'manifest.mpd'), 'utf8').catch(() => undefined)
+      for (const f of files.filter((n) => mediaPlaylistRep(n) !== null)) playlists[f] = await readFile(join(stage, f), 'utf8')
+      const mpd = await readFile(join(stage, DASH_MANIFEST), 'utf8').catch(() => undefined)
       const result = verifyPackage({ id: ctx.meta.outputId, files, master, playlists, mpd })
       if (!result.ok) {
         const failed = result.checks.filter((c) => !c.ok).map((c) => c.name)
@@ -226,7 +227,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
       await writeFile(join(stage, 'source.json'), JSON.stringify({ sha256: ctx.meta.sha256, name: ctx.meta.name, uploadId: ctx.meta.uploadId }, null, 2) + '\n')
       await rm(target, { recursive: true, force: true })
       await rename(stage, target)
-      return { summary: `origin/${id}/`, result: { id, path: `origin/${id}`, urls: { hls: `/${id}/master.m3u8`, dash: `/${id}/manifest.mpd` } } }
+      return { summary: `origin/${id}/`, result: { id, path: `origin/${id}`, urls: { hls: titleLocation('', id, 'hls'), dash: titleLocation('', id, 'dash') } } }
     },
   }
 }

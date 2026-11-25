@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { formatRungs, selectRungs } from '../../shared/src/ladder.ts'
+import { packagerEnv } from '../../shared/src/title-layout.ts'
 import { DEFAULT_IMAGE, explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { verifyPackage } from './package.mjs'
 
@@ -23,6 +24,15 @@ test('quick keeps 360p and 720p only', () => {
 
 test('formatRungs gives the short form the logs and the Upload page show', () => {
   assert.equal(formatRungs(selectRungs(720)), '240:400 360:800 480:1400 720:2800')
+})
+
+test('both packagers are handed the same layout names', () => {
+  const ffmpeg = packageCommand({ ...base, kind: 'ffmpeg', env: {} }).env
+  const dockerArgs = packageCommand({ ...base, kind: 'shaka' }).args
+  for (const [k, v] of Object.entries(packagerEnv())) {
+    assert.equal(ffmpeg[k], v, `ffmpeg gets ${k}`)
+    assert.ok(dockerArgs.includes(`${k}=${v}`), `shaka gets ${k}`)
+  }
 })
 
 test('both packagers are handed the same ladder in the same form', () => {
@@ -50,6 +60,7 @@ test('the ffmpeg packager runs package.sh on the host and hands it the ladder', 
   assert.deepEqual(c.env, {
     PATH: '/bin', INPUT: '/work/abc/mezzanine.mkv', OUT: '/origin/.tmp-1', PROGRESS: 'pipe:1',
     RUNGS: '240:400:600:800 360:800:1200:1600 480:1400:2100:2800 720:2800:4200:5600', SRC_H: '720',
+    ...packagerEnv(),
   })
 })
 

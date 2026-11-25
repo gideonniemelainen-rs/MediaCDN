@@ -1,6 +1,7 @@
-// Both packaging scripts take the ladder from the caller and hold no bitrate table or arithmetic of their own.
-// PRINT_ARGS=1 makes each print its ffmpeg arguments and stop, so this runs without encoding anything. The
-// rung values below are deliberately not ones either script could produce itself (no 1.5x or 2x anywhere).
+// Both packaging scripts take the ladder and the file names from the caller and hold no bitrate table, bitrate
+// arithmetic or layout name of their own. PRINT_ARGS=1 makes each print its arguments and stop, so this runs without
+// encoding anything. The values below are deliberately not ones either script could produce itself (no 1.5x or 2x
+// anywhere, and names no packager would choose).
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -9,16 +10,24 @@ import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { encodeSpec, selectRungs } from '../../shared/src/ladder.ts'
+import { packagerEnv } from '../../shared/src/title-layout.ts'
 
 const FFMPEG_SCRIPT = fileURLToPath(new URL('../../scripts/package.sh', import.meta.url))
 const SHAKA_SCRIPT = fileURLToPath(new URL('../scripts/package-shaka.sh', import.meta.url))
 const has = (cmd) => spawnSync(cmd, ['-version'], { stdio: 'ignore' }).status === 0
 
 const ODD = '360:500:777:999 720:1500:2250:3001'
+const ODD_NAMES = {
+  INIT_TEMPLATE: 'i$Rep$.x',
+  CHUNK_TEMPLATE: 'c-$Rep$-$Number%05d$.y',
+  PLAYLIST_TEMPLATE: 'p$Rep$.z',
+  HLS_MASTER: 'main.m3u8',
+  DASH_MANIFEST: 'dash.mpd',
+}
 
 /** Run a script in print mode; `lines[0]` is the filter graph and the rest are its ffmpeg arguments. */
 function print(script, env) {
-  const r = spawnSync('bash', [script, 'demo'], { env: { PATH: process.env.PATH, PRINT_ARGS: '1', ...env }, encoding: 'utf8' })
+  const r = spawnSync('bash', [script, 'demo'], { env: { PATH: process.env.PATH, PRINT_ARGS: '1', ...packagerEnv(), ...env }, encoding: 'utf8' })
   return { status: r.status, stderr: r.stderr, lines: r.stdout.split('\n').filter(Boolean) }
 }
 const args = (p) => p.lines.slice(1).join(' ')
@@ -53,6 +62,26 @@ test('package.sh refuses a missing ladder and a rung without its limits', () => 
   const p = print(FFMPEG_SCRIPT, { RUNGS: '360:800' })
   assert.notEqual(p.status, 0)
   assert.match(p.stderr, /expected height:kbps:maxrate:bufsize/)
+})
+
+test('package.sh names its files exactly as it is told, with ffmpeg\'s own placeholder for the representation', () => {
+  const p = print(FFMPEG_SCRIPT, { RUNGS: ODD, OUT: '/o', ...ODD_NAMES })
+  assert.equal(p.status, 0, p.stderr)
+  assert.match(args(p), /-init_seg_name i\$RepresentationID\$\.x -media_seg_name c-\$RepresentationID\$-\$Number%05d\$\.y -hls_master_name main\.m3u8 \/o\/dash\.mpd$/)
+})
+
+test('package.sh with the shared layout names writes the files the origin and player read', () => {
+  const p = print(FFMPEG_SCRIPT, { RUNGS: ODD, OUT: '/o' })
+  assert.match(args(p), /-init_seg_name init-\$RepresentationID\$\.m4s -media_seg_name chunk-\$RepresentationID\$-\$Number%05d\$\.m4s -hls_master_name master\.m3u8 \/o\/manifest\.mpd$/)
+})
+
+test('package.sh refuses to run without every name', () => {
+  for (const name of Object.keys(ODD_NAMES)) {
+    if (name === 'PLAYLIST_TEMPLATE') continue // ffmpeg's muxer names the HLS playlists itself
+    const p = print(FFMPEG_SCRIPT, { RUNGS: ODD, [name]: '' })
+    assert.notEqual(p.status, 0, name)
+    assert.match(p.stderr, new RegExp(name))
+  }
 })
 
 // package-shaka.sh reads the frame rate of its input even in print mode, so it needs a real (tiny) clip.
@@ -90,4 +119,30 @@ test('package-shaka.sh prints without creating its output directory, and refuses
   const bad = print(SHAKA_SCRIPT, { RUNGS: '360:800', INPUT: clip, OUT: out })
   assert.notEqual(bad.status, 0)
   assert.match(bad.stderr, /expected height:kbps:maxrate:bufsize/)
+})
+
+test('package-shaka.sh names every file, playlist and manifest exactly as it is told', { skip }, () => {
+  const out = join(dir, 'out')
+  const p = print(SHAKA_SCRIPT, { RUNGS: ODD, INPUT: clip, OUT: out, ...ODD_NAMES })
+  assert.equal(p.status, 0, p.stderr)
+  const a = args(p)
+  assert.ok(a.includes(`stream=video,init_segment=${out}/i0.x,segment_template=${out}/c-0-$Number%05d$.y,playlist_name=p0.z`), 'first video rung')
+  assert.ok(a.includes(`init_segment=${out}/i1.x,segment_template=${out}/c-1-$Number%05d$.y,playlist_name=p1.z`), 'second video rung')
+  assert.ok(a.includes(`stream=audio,init_segment=${out}/i2.x,segment_template=${out}/c-2-$Number%05d$.y,playlist_name=p2.z`), 'audio follows the video rungs')
+  assert.ok(a.includes(`--hls_master_playlist_output ${out}/main.m3u8`) && a.includes(`--mpd_output ${out}/dash.mpd`))
+})
+
+test('package-shaka.sh with the shared layout names writes the files the origin and player read', { skip }, () => {
+  const out = join(dir, 'out')
+  const a = args(print(SHAKA_SCRIPT, { RUNGS: ODD, INPUT: clip, OUT: out }))
+  assert.ok(a.includes(`init_segment=${out}/init-0.m4s,segment_template=${out}/chunk-0-$Number%05d$.m4s,playlist_name=media_0.m3u8`))
+  assert.ok(a.includes(`--hls_master_playlist_output ${out}/master.m3u8`) && a.includes(`--mpd_output ${out}/manifest.mpd`))
+})
+
+test('package-shaka.sh refuses to run without every name', { skip }, () => {
+  for (const name of Object.keys(ODD_NAMES)) {
+    const p = print(SHAKA_SCRIPT, { RUNGS: ODD, INPUT: clip, OUT: join(dir, 'out'), [name]: '' })
+    assert.notEqual(p.status, 0, name)
+    assert.match(p.stderr, new RegExp(name))
+  }
 })

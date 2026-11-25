@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
 import { fileURLToPath } from 'node:url'
-import { buildIndex } from '../../tools/index-lib.mjs'
+import { buildIndex } from '../../shared/src/title-layout.ts'
 import { createPipelineServer } from './server.mjs'
 import { createSteps } from './steps.mjs'
 

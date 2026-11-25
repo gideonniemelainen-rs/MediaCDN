@@ -4,6 +4,7 @@
 //           writes CMAF HLS and DASH). The image is the only place Shaka Packager is installed.
 import { dirname, join } from 'node:path'
 import { encodeSpec } from '../../shared/src/ladder.ts'
+import { packagerEnv } from '../../shared/src/title-layout.ts'
 
 export const PACKAGERS = ['ffmpeg', 'shaka']
 export const DEFAULT_IMAGE = 'mediacdn-pipeline:dev'
@@ -27,7 +28,7 @@ export function packagerKind(value) {
  */
 export function packageCommand({ kind, mezzanine, stage, outputId, rungs, crf, sourceHeight, scriptsDir, packageScript, image = DEFAULT_IMAGE, uid, gid, env = process.env }) {
   if (kind === 'ffmpeg') {
-    return { cmd: 'bash', args: [packageScript, outputId], env: { ...env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1', RUNGS: encodeSpec(rungs), SRC_H: String(sourceHeight) } }
+    return { cmd: 'bash', args: [packageScript, outputId], env: { ...env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1', RUNGS: encodeSpec(rungs), SRC_H: String(sourceHeight), ...packagerEnv() } }
   }
   const e = (k, v) => ['-e', `${k}=${v}`]
   return {
@@ -44,6 +45,7 @@ export function packageCommand({ kind, mezzanine, stage, outputId, rungs, crf, s
       ...e('OUT', '/out'),
       ...e('PROGRESS', 'pipe:1'),
       ...e('RUNGS', encodeSpec(rungs)),
+      ...Object.entries(packagerEnv()).flatMap(([k, v]) => e(k, v)),
       ...(crf ? e('CRF', crf) : []),
       ...e('SRC_H', sourceHeight),
       ...e('SLUG', outputId),
