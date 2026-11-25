@@ -10,9 +10,10 @@ import { IngestError, isProgressNoise, jobPaths, normaliseFile, parseProgressLin
 import { PIPELINE_VERSION, jobKey } from './job.mjs'
 import { gopFrames, measureComplexity } from './complexity.mjs'
 import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from '../../shared/src/ladder.ts'
+import { resolve } from '../../shared/src/settings.ts'
 import { DASH_MANIFEST, HLS_MASTER, mediaPlaylistRep, titleLocation } from '../../shared/src/title-layout.ts'
 import { chooseOutputId, verifyPackage } from './package.mjs'
-import { explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
+import { DEFAULT_IMAGE, explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
 import { validate } from './validate.mjs'
 
@@ -48,9 +49,23 @@ export const outputIdFor = async (origin, slug, sha) => chooseOutputId(slug, sha
 /**
  * `packager` is 'ffmpeg' (scripts/package.sh on the host, the default) or 'shaka' (Shaka Packager in the
  * worker `image`, run with docker); it defaults to PIPELINE_PACKAGER. `measure` is the complexity probe, injectable for tests.
+ * `getPackaging()` returns the stored overrides of the `packaging` settings group; they are laid over those defaults, so
+ * a change applies to the next job with no restart. A job reads them once, so its ladder and package stages agree.
  */
-export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT, packager = process.env.PIPELINE_PACKAGER, image = process.env.PIPELINE_IMAGE, measure = measureComplexity }) {
-  const kind = packagerKind(packager)
+export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCRIPT, packager = process.env.PIPELINE_PACKAGER, image = process.env.PIPELINE_IMAGE, getPackaging = async () => ({}), measure = measureComplexity }) {
+  const defaults = { packager: packagerKind(packager), image: image || DEFAULT_IMAGE, ladderCrf: LADDER_CRF }
+  const packagingFor = async (ctx, h) => {
+    if (!ctx.shared.packaging) {
+      let overrides = {}
+      try {
+        overrides = (await getPackaging()) ?? {}
+      } catch (e) {
+        h?.log(`packaging settings unavailable (${e.message}); using the defaults`)
+      }
+      ctx.shared.packaging = resolve('packaging', defaults, overrides)
+    }
+    return ctx.shared.packaging
+  }
   const staging = (ctx) => join(origin, `.tmp-${ctx.meta.uploadId}`)
 
   return {
@@ -114,6 +129,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
 
     async ladder(ctx, h) {
       const { info } = ctx.shared
+      const { packager: kind, ladderCrf } = await packagingFor(ctx, h)
       // Even, because the mezzanine's dimensions are (normalise rounds them down).
       const sourceHeight = Math.floor(info.video.displayHeight / 2) * 2
       const fixed = selectRungs(sourceHeight)
@@ -132,7 +148,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
           mezzanine: ctx.shared.mezzanine,
           duration: info.duration,
           heights: candidateHeights(sourceHeight),
-          crf: LADDER_CRF,
+          crf: ladderCrf,
           gop: gopFrames(fps),
           tmp: join(work, `.ladder-${ctx.meta.uploadId}`),
           onProgress: h.progress,
@@ -143,13 +159,13 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
         return fallback('complexity probe failed')
       }
       const plan = planLadder(probe.measured, { aspect: info.video.displayWidth / info.video.displayHeight, fps })
-      ctx.shared.ladder = { rungs: plan.rungs, crf: LADDER_CRF }
+      ctx.shared.ladder = { rungs: plan.rungs, crf: ladderCrf }
       const lo = plan.rungs[0].kbps
       const hi = plan.rungs[plan.rungs.length - 1].kbps
       return {
         summary: `${plan.rungs.length} rungs, ${lo}–${hi} kbps · ${plan.class} content`,
         result: {
-          rungs: plan.rungs, class: plan.class, bpp: Number(plan.bpp.toFixed(4)), crf: LADDER_CRF,
+          rungs: plan.rungs, class: plan.class, bpp: Number(plan.bpp.toFixed(4)), crf: ladderCrf,
           measured: probe.measured, dropped: plan.dropped, sampledSeconds: Number(probe.seconds.toFixed(1)), fixed: false,
         },
       }
@@ -158,6 +174,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
     async package(ctx, h) {
       const stage = staging(ctx)
       const { info, mezzanine } = ctx.shared
+      const { packager: kind, image } = await packagingFor(ctx, h)
       await rm(stage, { recursive: true, force: true })
       await mkdir(stage, { recursive: true }) // the container needs it to exist to mount it
       const sourceHeight = Math.floor(info.video.displayHeight / 2) * 2

@@ -28,8 +28,6 @@ for (let i = 0; i < argv.length; i++) {
 
 const profile = JSON.parse(await readFile(join(root, 'profiles/default.json'), 'utf8'))
 const allowedOrigins = process.env.PIPELINE_ALLOWED_ORIGINS?.split(',').map((s) => s.trim()) ?? DEFAULT_ORIGINS
-const steps = createSteps({ profile, work: opts.work, origin: opts.origin })
-
 const pool = createPool()
 const dbError = await checkDb(pool)
 if (dbError) {
@@ -50,7 +48,9 @@ const history = {
   benchmarks: createBenchmarks(pool),
   uploads: createUploads(pool, { fallbackUserId: async () => (await users.findByName('admin'))?.id ?? null }),
 }
-const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, settings: createSettings(pool), allowedOrigins })
+const settings = createSettings(pool)
+const steps = createSteps({ profile, work: opts.work, origin: opts.origin, getPackaging: async () => (await settings.all()).overrides.packaging })
+const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, settings, allowedOrigins })
 
 server.listen(opts.port, '127.0.0.1', () => {
   console.log(`pipeline on http://127.0.0.1:${opts.port}/api/pipeline  (work ${opts.work}, origin ${opts.origin})`)

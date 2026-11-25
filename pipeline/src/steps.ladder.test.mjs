@@ -48,3 +48,49 @@ test('without a known frame rate the fixed ladder is used', async () => {
   const r = await steps({ packager: 'shaka', measure: async () => assert.fail('must not probe') }).ladder(ctx({ fps: undefined }), h)
   assert.equal(r.result.reason, 'frame rate unknown')
 })
+
+const planMeasure = async () => ({ measured: [{ height: 240, kbps: 260 }, { height: 360, kbps: 538 }, { height: 480, kbps: 850 }, { height: 720, kbps: 1360 }], windows: [], seconds: 1 })
+
+test('a packager chosen in the settings applies to the next job, with no restart', async () => {
+  let stored = {}
+  const s = steps({ packager: 'ffmpeg', measure: planMeasure, getPackaging: async () => stored })
+  assert.equal((await s.ladder(ctx(), h)).result.fixed, true, 'no override: the env default (ffmpeg)')
+  stored = { packager: 'shaka' }
+  assert.equal((await s.ladder(ctx(), h)).result.fixed, false, 'the next job measures, as the shaka path does')
+  stored = {}
+  assert.equal((await s.ladder(ctx(), h)).result.fixed, true, 'an override removed puts the default back')
+})
+
+test('a job reads the packaging settings once, so its stages agree', async () => {
+  let stored = { packager: 'shaka' }
+  let reads = 0
+  const s = steps({ measure: planMeasure, getPackaging: async () => (reads++, stored) })
+  const c = ctx()
+  await s.ladder(c, h)
+  stored = { packager: 'ffmpeg' } // changed mid-job
+  await s.ladder(c, h)
+  assert.equal(reads, 1)
+  assert.equal(c.shared.packaging.packager, 'shaka')
+})
+
+test('the stored quality and image reach the job; the rest stay the defaults', async () => {
+  const c = ctx()
+  let crf
+  await steps({ packager: 'shaka', measure: async (o) => ((crf = o.crf), planMeasure()), getPackaging: async () => ({ ladderCrf: 25, image: 'x/y:1' }) }).ladder(c, h)
+  assert.equal(crf, 25)
+  assert.deepEqual(c.shared.packaging, { packager: 'shaka', image: 'x/y:1', ladderCrf: 25 })
+  assert.equal(c.shared.ladder.crf, 25)
+})
+
+test('unusable stored values are ignored, and an unreachable store means the defaults', async () => {
+  const c = ctx()
+  await steps({ packager: 'ffmpeg', getPackaging: async () => ({ packager: 'nope', ladderCrf: 3 }) }).ladder(c, h)
+  assert.equal(c.shared.packaging.packager, 'ffmpeg')
+  assert.equal(c.shared.packaging.ladderCrf, LADDER_CRF)
+
+  const d = ctx()
+  h.lines.length = 0
+  await steps({ packager: 'ffmpeg', getPackaging: async () => { throw new Error('db down') } }).ladder(d, h)
+  assert.equal(d.shared.packaging.packager, 'ffmpeg')
+  assert.ok(h.lines.some((l) => /db down/.test(l)))
+})
