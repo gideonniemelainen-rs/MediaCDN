@@ -30,7 +30,13 @@ Terms used in code, docs and architecture reviews. Use these names; add to this 
 
 **Job / Stage** — an upload's run through the pipeline (probe, validate, normalise, ladder, package, verify, publish). Each Job and Stage is recorded in Postgres and streamed to the Upload page.
 
-**Workflow** *(planned)* — a named, typed task the GUI can run on the job runner with live logs: fetch sources, package a title, upload to S3, run the bench. Replaces running the standalone scripts by hand.
+**Workflow** — a named, typed task with parameters, defined once in `shared/src/workflows.ts`: probe sources, fetch sources, package a title, make ads, smoke-test the origin, run the benchmark, upload to S3, rebuild the S3 index. The page draws its form and stage graph from that definition and the server validates against it. Replaces running the standalone scripts by hand; the scripts still work by hand.
+
+**Run** — one execution of a Workflow, started with `POST /workflows/:id/runs` (admin only). A Run is a Job: the same stage graph, live log and progress as an upload, kept in `work/runs/<id>.json`, in Postgres (`workflow_runs`) and in `work/runs/<id>/` for what it produced (a benchmark's `report.json`). Uploads and Runs share one queue, so a benchmark is not skewed by an encode.
+
+**Dry run** — the first half of a gated Workflow (`upload-s3`, `rebuild-s3-index`): started without `confirm`, it only looks. A real run must name a successful Dry run of the same Workflow and parameters, by the same user, under 15 minutes old and not used before, or the API answers 409. The rule is in `pipeline/src/runs.mjs`, not in the page.
+
+**Guide** — a Workflow the API never runs (`shape.sh` needs root, `chrome-lab.sh` opens a browser, `lab-certs.sh`); the page shows the exact commands to paste.
 
 **Settings** — config an admin can edit, stored in Postgres and served by the pipeline API (`GET /settings`, public; writes admin-only). The schema is `shared/src/settings.ts`. Boot-time values (ports, DB URL) stay in env, and no Setting holds a secret.
 
