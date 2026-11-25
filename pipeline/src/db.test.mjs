@@ -15,7 +15,7 @@ describe('database', { skip: !db && SKIP }, () => {
 
   test('migrations are recorded, and running them again changes nothing', async () => {
     const { rows } = await db.pool.query('SELECT version FROM schema_migrations')
-    assert.deepEqual(rows.map((r) => r.version), ['001'])
+    assert.deepEqual(rows.map((r) => r.version), ['001', '002'])
     assert.deepEqual(await migrate(db.pool), [])
   })
 
@@ -23,7 +23,7 @@ describe('database', { skip: !db && SKIP }, () => {
     const fresh = await openTestDb({ migrated: false })
     try {
       const results = await Promise.all([migrate(fresh.pool), migrate(fresh.pool), migrate(fresh.pool)])
-      assert.equal(results.flat().length, 1, 'applied exactly once')
+      assert.deepEqual(results.flat().sort(), ['001', '002'], 'each migration applied exactly once')
     } finally {
       await fresh.close()
     }
@@ -32,7 +32,7 @@ describe('database', { skip: !db && SKIP }, () => {
   test('creates every table the plan names', async () => {
     const { rows } = await db.pool.query('SELECT table_name FROM information_schema.tables WHERE table_schema = $1', [db.schema])
     const names = rows.map((r) => r.table_name)
-    for (const t of ['users', 'sessions', 'uploads', 'upload_stages', 'benchmark_runs', 'benchmark_sessions', 'artifacts', 'settings'])
+    for (const t of ['users', 'sessions', 'uploads', 'upload_stages', 'benchmark_runs', 'benchmark_sessions', 'artifacts', 'settings', 'app_settings'])
       assert.ok(names.includes(t), t)
   })
 

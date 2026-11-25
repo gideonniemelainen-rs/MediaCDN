@@ -1,6 +1,6 @@
 # Step 3: Settings, the settings API and a runtime Delivery module
 
-Status: planned 2026-11-25. Decisions confirmed 2026-11-25: (1) `GET /settings` is public; (2) CORS stays out of the first version, to be revisited when titles are streamed from the origin, S3 and the CDN again and a browser needs it configured; (3) a quadrant on a disabled delivery shows "disabled in settings". Work item 1 done 2026-11-25 (`shared/src/deliveries.ts`, `shared/src/settings.ts` and their tests, 47 pass in `shared/`; the tests caught two bugs in the first draft, `in` matching prototype names such as `toString` in `isDelivery`, and `errors['__proto__']` silently dropping an error, both fixed); item 2 done 2026-11-25 (`catalog.ts` split into `deliveries.ts` (the effective table: build defaults with settings overrides on top, `setDeliveryOverrides`, `isEnabled`, `deliveryBase`, `transportBase`, `indexUrl`), a pure `catalog.ts` and `indexStore.ts` (the mutable index state and the functions that read it), with the shared delivery table replacing the five parallel tables; the 148 existing web tests pass with only import changes, plus 11 new ones in `deliverySettings.test.ts`; `tsc -b`, `vite build` pass). The dependency order is deliveries, then catalog, then indexStore, so the stateful functions (`streamsFor`, `findStream`, `pickForPreset`, `streamForDelivery`, `loadIndex`) moved to `indexStore.ts` rather than staying in `catalog.ts` as the plan first said; that avoids a cycle between the index state and the pure derivation. Items 3-8 not started. Third of six steps toward a GUI-driven tool; steps 1 and 2 are `shared-ladder.md` and `title-layout.md` (both built). Terms are in `CONTEXT.md`. This is the step the GUI toggles sit on: step 5's Settings page only edits what this step makes editable.
+Status: planned 2026-11-25. Decisions confirmed 2026-11-25: (1) `GET /settings` is public; (2) CORS stays out of the first version, to be revisited when titles are streamed from the origin, S3 and the CDN again and a browser needs it configured; (3) a quadrant on a disabled delivery shows "disabled in settings". Work item 1 done 2026-11-25 (`shared/src/deliveries.ts`, `shared/src/settings.ts` and their tests, 47 pass in `shared/`; the tests caught two bugs in the first draft, `in` matching prototype names such as `toString` in `isDelivery`, and `errors['__proto__']` silently dropping an error, both fixed); item 2 done 2026-11-25 (`catalog.ts` split into `deliveries.ts` (the effective table: build defaults with settings overrides on top, `setDeliveryOverrides`, `isEnabled`, `deliveryBase`, `transportBase`, `indexUrl`), a pure `catalog.ts` and `indexStore.ts` (the mutable index state and the functions that read it), with the shared delivery table replacing the five parallel tables; the 148 existing web tests pass with only import changes, plus 11 new ones in `deliverySettings.test.ts`; `tsc -b`, `vite build` pass). The dependency order is deliveries, then catalog, then indexStore, so the stateful functions (`streamsFor`, `findStream`, `pickForPreset`, `streamForDelivery`, `loadIndex`) moved to `indexStore.ts` rather than staying in `catalog.ts` as the plan first said; that avoids a cycle between the index state and the pure derivation. item 3 done 2026-11-25 (`pipeline/src/db/migrations/002-app-settings.sql`, `pipeline/src/db/settings.mjs` with `all`, `get`, `set` and `unset`, `RevisionConflict` (409) and `SettingsInvalid` (400), and `settings.db.test.mjs` with 12 tests against the real database; full node suite with Postgres up 245 pass, 1 skipped). Differences from the plan below: the table is `app_settings`, because 001 already has an unused per-user `settings` table that stays reserved for user preferences; `revision` comes from one sequence shared by all groups, rows are never deleted (resetting a field rewrites the row), so the highest revision never goes down; `If-Match` compares the revision of the group being written, not the document's, so two tabs editing different groups do not conflict, which means `GET /settings` also returns `revisions` per group (item 4 adds it to `SettingsDocument`); the repository validates with the shared schema, so the table cannot hold an invalid value whoever calls it; `set` replaces a group's overrides and `unset` removes one field. Items 4-8 not started. Third of six steps toward a GUI-driven tool; steps 1 and 2 are `shared-ladder.md` and `title-layout.md` (both built). Terms are in `CONTEXT.md`. This is the step the GUI toggles sit on: step 5's Settings page only edits what this step makes editable.
 
 ## Why
 
@@ -63,19 +63,20 @@ settings.ts     the schema, per group: field name, type, validator, default-sour
 - `PUT /settings/:group` admin only; body is the group's overrides; validated with the shared schema; returns the new `{ revision, overrides }`. Sends `If-Match: <revision>`; a stale revision gets `409` so two browser tabs cannot silently overwrite each other.
 - `DELETE /settings/:group/:field` admin only; resets one field to its default.
 
-Storage: migration `002-settings.sql`, one row per group:
+Storage: migration `002-app-settings.sql` (as built), one row per group:
 
 ```sql
-CREATE TABLE settings (
+CREATE SEQUENCE app_settings_revision;
+CREATE TABLE app_settings (
   group_name text PRIMARY KEY,
-  value      jsonb NOT NULL,
-  revision   bigint NOT NULL DEFAULT 1,
+  value      jsonb NOT NULL DEFAULT '{}',
+  revision   bigint NOT NULL,
   updated_at timestamptz NOT NULL DEFAULT now(),
-  updated_by uuid REFERENCES users (id)
+  updated_by uuid REFERENCES users (id) ON DELETE SET NULL
 );
 ```
 
-A single `revision` for `GET` is the max across rows, so the origin and Player can ask "has anything changed" cheaply.
+`GET`'s document `revision` is the highest across rows, so the origin and Player can ask "has anything changed" cheaply; each group also reports its own revision, which is what `If-Match` is checked against.
 
 ### Runtime Delivery module (web)
 
