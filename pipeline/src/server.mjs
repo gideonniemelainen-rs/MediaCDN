@@ -6,9 +6,11 @@
 //   GET  /jobs, /jobs/:id   job summaries, one job snapshot (your own; an admin sees all)
 //   GET  /jobs/:id/events   server-sent events: the current snapshot, then every change
 //   GET  /uploads, /uploads/:id   upload history from the database (needs `history`)
+//   GET  /settings          the settings overrides, their revisions and the highest revision (no session needed)
+//   PUT  /settings/:group, DELETE /settings/:group/:field   change settings (admin only; If-Match: <group revision>)
 //   POST /benchmarks        save a benchmark run; GET /benchmarks, /benchmarks/:id,
 //                           /benchmarks/:id/artifacts/:kind; DELETE /benchmarks/:id (all yours; admin: all)
-// With `auth` given (always, outside tests) everything except /health and the login route needs a session.
+// With `auth` given (always, outside tests) everything except /health, GET /settings and the login route needs a session.
 // It runs ffmpeg on whatever it is sent, so it only answers to localhost and to the dev server's
 // origin, sends no CORS headers (a cross-site page cannot reach it) and binds to loopback.
 import { createHash, randomBytes } from 'node:crypto'
@@ -18,6 +20,7 @@ import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import { isGroupName } from '../../shared/src/settings.ts'
 import { MIN_PASSWORD, clearCookie, createRateLimiter, newToken, sessionCookie, tokenFrom, verifyPassword } from './auth.mjs'
 import { parseRun } from './benchmarks.mjs'
 import { createJobManager, isTerminal, publicJob } from './jobs.mjs'
@@ -80,11 +83,18 @@ async function readJson(req, max = 4096) {
 /** Whether `user` may see `job`. Without auth everything is visible; jobs from before accounts have no owner and are the admin's. */
 export const canSee = (user, job) => !user || user.role === 'admin' || job.meta.userId === user.id
 
+/** The revision in an `If-Match` header (`7` or `"7"`), undefined when there is none, NaN when it is not a revision. */
+export function ifMatchRevision(header) {
+  if (header === undefined) return undefined
+  const m = /^\s*(?:"(\d{1,15})"|(\d{1,15}))\s*$/.exec(header)
+  return m ? Number(m[1] ?? m[2]) : NaN
+}
+
 /**
  * `history` is `{ uploads, benchmarks }` (the repos from src/db). With it, every job state change is
  * recorded, and jobs already on disk are recorded once at startup.
  */
-export async function createPipelineServer({ work, origin, profile, steps, auth, history, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
+export async function createPipelineServer({ work, origin, profile, steps, auth, history, settings, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
   const limiter = auth?.limiter ?? createRateLimiter()
   const manager = await createJobManager({ work, steps, now, onChange: history && ((job) => history.uploads.upsert(job)) })
   if (history) {
@@ -94,6 +104,29 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
   }
   const maxBytes = profile.limits.maxFileBytes
   const uploads = join(work, 'uploads')
+
+  /** `settings` is the repo from src/db/settings.mjs. Reading is open; changing needs an admin whenever there is auth. */
+  async function handleSettings(req, res, path, user) {
+    if (path === '/settings') {
+      if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })
+      return json(res, 200, await settings.all())
+    }
+    if (req.method !== 'PUT' && req.method !== 'DELETE') return json(res, 405, { error: 'method not allowed' })
+    if (auth && user?.role !== 'admin') return json(res, 403, { error: 'admin only' })
+    const m = /^\/settings\/([a-z]+)(?:\/([A-Za-z0-9._-]+))?$/.exec(path)
+    if (!m || !isGroupName(m[1]) || (req.method === 'PUT') !== (m[2] === undefined)) return json(res, 404, { error: 'not found' })
+    const ifRevision = ifMatchRevision(req.headers['if-match'])
+    if (Number.isNaN(ifRevision)) return json(res, 400, { error: 'If-Match must be the group revision, a whole number' })
+    const opts = { userId: user?.id ?? null, ...(ifRevision !== undefined && { ifRevision }) }
+    try {
+      const stored = req.method === 'PUT' ? await settings.set(m[1], await readJson(req, 16384), opts) : await settings.unset(m[1], m[2], opts)
+      res.setHeader('ETag', `"${stored.revision}"`)
+      return json(res, 200, { group: m[1], ...stored })
+    } catch (e) {
+      if (e.errors) return json(res, e.status ?? 400, { error: e.message, errors: e.errors })
+      throw e
+    }
+  }
 
   async function handleUpload(req, res, user) {
     const length = Number(req.headers['content-length'])
@@ -253,6 +286,8 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
         return json(res, 200, { ok: true, ...(auth ? { db: db ?? 'ok' } : {}) })
       }
       if (auth && path === '/auth/login' && req.method === 'POST') return await handleLogin(req, res)
+      // Settings are readable signed out: the Player needs the delivery config before anyone logs in, and none of it is secret.
+      if (settings && path === '/settings' && req.method === 'GET') return await handleSettings(req, res, path, undefined)
 
       let user, token
       if (auth) {
@@ -272,6 +307,7 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
         if (path === '/auth/password' && req.method === 'POST') return await handlePassword(req, res, user, token)
       }
 
+      if (settings && (path === '/settings' || path.startsWith('/settings/'))) return await handleSettings(req, res, path, user)
       if (path === '/benchmarks' || path.startsWith('/benchmarks/')) return await handleBenchmarks(req, res, path, url, user)
       if (req.method === 'POST' && path === '/uploads') return await handleUpload(req, res, user)
       if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })

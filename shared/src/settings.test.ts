@@ -109,11 +109,18 @@ test('parseSettings reads a document and drops what it cannot use', () => {
   })
   assert.equal(doc.revision, 7)
   assert.deepEqual(doc.overrides, { player: { adsEnabled: false, adsBase: 'http://localhost:8788' }, origin: { liveWindow: 9 } })
+  assert.deepEqual(doc.revisions, {}, 'a server that sends no per-group revisions is still readable')
 })
 
 test('parseSettings refuses a body that is not a settings document', () => {
   for (const bad of [null, 'x', {}, { revision: 'a', overrides: {} }, { revision: 1 }, { revision: 1, overrides: null }, { revision: 1, overrides: [] }, { revision: NaN, overrides: {} }]) {
     assert.throws(() => parseSettings(bad), /not a settings document/, JSON.stringify(bad))
   }
-  assert.deepEqual(parseSettings({ revision: 0, overrides: {} }), { revision: 0, overrides: {} })
+  assert.deepEqual(parseSettings({ revision: 0, overrides: {} }), { revision: 0, overrides: {}, revisions: {} })
+})
+
+test('parseSettings keeps per-group revisions that are whole numbers for known groups, and drops the rest', () => {
+  const doc = parseSettings({ revision: 9, overrides: {}, revisions: { player: 4, origin: 9, retired: 2, packaging: -1, deliveries: 1.5, extra: 'x' } })
+  assert.deepEqual(doc.revisions, { player: 4, origin: 9 })
+  assert.deepEqual(parseSettings({ revision: 1, overrides: {}, revisions: [] }).revisions, {})
 })

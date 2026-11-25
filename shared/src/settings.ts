@@ -158,10 +158,14 @@ export function resolve(group: GroupName, defaults: Values, overrides?: Values):
   return out
 }
 
-/** What `GET /settings` returns: the highest revision stored, and each group's overrides. */
+/**
+ * What `GET /settings` returns: the highest revision stored, each group's overrides, and each group's own revision
+ * (what a write to that group is checked against with `If-Match`; a group never set has none).
+ */
 export interface SettingsDocument {
   revision: number
   overrides: Partial<Record<GroupName, Values>>
+  revisions: Partial<Record<GroupName, number>>
 }
 
 /**
@@ -169,7 +173,7 @@ export interface SettingsDocument {
  * invalid values are dropped, so a newer or older server never breaks an older or newer client.
  */
 export function parseSettings(json: unknown): SettingsDocument {
-  const j = json as { revision?: unknown; overrides?: unknown } | null
+  const j = json as { revision?: unknown; overrides?: unknown; revisions?: unknown } | null
   if (!j || typeof j.revision !== 'number' || !Number.isFinite(j.revision) || typeof j.overrides !== 'object' || j.overrides === null || Array.isArray(j.overrides)) {
     throw new Error('not a settings document (expected revision and overrides)')
   }
@@ -179,5 +183,9 @@ export function parseSettings(json: unknown): SettingsDocument {
     const kept = resolve(name, {}, group as Values)
     if (Object.keys(kept).length) overrides[name] = kept
   }
-  return { revision: j.revision, overrides }
+  const revisions: SettingsDocument['revisions'] = {}
+  if (typeof j.revisions === 'object' && j.revisions !== null && !Array.isArray(j.revisions)) {
+    for (const [name, n] of Object.entries(j.revisions)) if (isGroupName(name) && typeof n === 'number' && Number.isInteger(n) && n >= 0) revisions[name] = n
+  }
+  return { revision: j.revision, overrides, revisions }
 }

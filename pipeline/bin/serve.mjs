@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url'
 import { checkDb, createPool } from '../src/db/pool.mjs'
 import { migrate } from '../src/db/migrate.mjs'
 import { createBenchmarks } from '../src/db/benchmarks.mjs'
+import { createSettings } from '../src/db/settings.mjs'
 import { createUploads } from '../src/db/uploads.mjs'
 import { createSessions } from '../src/db/sessions.mjs'
 import { createUsers, seedAdmin } from '../src/db/users.mjs'
@@ -49,7 +50,7 @@ const history = {
   benchmarks: createBenchmarks(pool),
   uploads: createUploads(pool, { fallbackUserId: async () => (await users.findByName('admin'))?.id ?? null }),
 }
-const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, allowedOrigins })
+const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, settings: createSettings(pool), allowedOrigins })
 
 server.listen(opts.port, '127.0.0.1', () => {
   console.log(`pipeline on http://127.0.0.1:${opts.port}/api/pipeline  (work ${opts.work}, origin ${opts.origin})`)
