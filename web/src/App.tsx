@@ -2,7 +2,8 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
 import {
-  DELIVERIES, DELIVERY_LABEL, type Delivery, findStream, isIndexed, loadIndex, pickForPreset, resolveStream, streamForDelivery, streamsFor,
+  DELIVERIES, DELIVERY_LABEL, TRANSPORTS, type Delivery, type Transport, findStream, isIndexed, loadIndex, pickForPreset, resolveStream,
+  streamForDelivery, streamsFor, transportProblem,
 } from './catalog'
 import { useCatalogs } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
@@ -20,6 +21,8 @@ import './index.css'
 interface PresetSlot {
   entry: string
   delivery?: Delivery
+  /** Only meaningful for the local origin; a slot without one keeps its own. */
+  transport?: Transport | null
 }
 const same = (entry: string, delivery?: Delivery): PresetSlot[] => Array.from({ length: 4 }, () => ({ entry, delivery }))
 const PRESETS: Record<string, PresetSlot[]> = {
@@ -27,6 +30,8 @@ const PRESETS: Record<string, PresetSlot[]> = {
   // Live is only simulated by the local origin.
   'mixed VOD + live': ['llamigos', 'agent-327', 'bbb', 'live'].map((entry) => ({ entry, delivery: 'local' })),
   // One title, four ways of getting it: the comparison this tool is for.
+  // One title over the lab's h1, h2 and h3 listeners, and the plain local origin for reference.
+  'compare transports': (['h1', 'h2', 'h3', null] as const).map((transport) => ({ entry: 'bbb', delivery: 'local' as const, transport })),
   'compare deliveries': (['local', 's3-near', 's3-far', 'cdn-s3'] as const).map((delivery) => ({ entry: 'bbb', delivery })),
 }
 
@@ -62,6 +67,7 @@ export default function App() {
       const vod = streamsFor(delivery).filter((s) => s.kind === 'VOD')
       const pick = pickForPreset(entry, delivery) ?? (entry === 'live' ? undefined : vod[slot % Math.max(1, vod.length)])
       dispatch({ type: 'setDelivery', slot, delivery })
+      if (preset[slot].transport !== undefined) dispatch({ type: 'setTransport', slot, transport: preset[slot].transport ?? null })
       dispatch({ type: 'setStream', slot, streamId: pick?.id ?? null })
     })
   }
@@ -131,7 +137,10 @@ export default function App() {
           const offered = streamsFor(delivery)
           // Say why a quadrant is empty or unavailable when the cause is its source's index.
           const index = isIndexed(delivery) ? statusOf(delivery) : null
-          const note = index?.state === 'error' ? index.message : index?.state === 'loading' ? 'Loading titles…' : undefined
+          const transport = state.transports[slot]
+          const note =
+            transportProblem(delivery, transport) ??
+            (index?.state === 'error' ? index.message : index?.state === 'loading' ? 'Loading titles…' : undefined)
           return (
             <section
               key={slot}
@@ -150,6 +159,20 @@ export default function App() {
                     </option>
                   ))}
                 </select>
+                {delivery === 'local' && (
+                  <select
+                    aria-label={`Quadrant ${slot + 1} transport`}
+                    value={transport ?? ''}
+                    onChange={(e) => dispatch({ type: 'setTransport', slot, transport: (e.target.value || null) as Transport | null })}
+                  >
+                    <option value="">default</option>
+                    {TRANSPORTS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <select
                   aria-label={`Quadrant ${slot + 1} stream`}
                   value={state.slots[slot] ?? ''}
@@ -167,7 +190,7 @@ export default function App() {
               <QuadrantPlayer
                 slot={slot}
                 streamId={stream?.id}
-                resolved={stream && resolveStream(stream, delivery)}
+                resolved={stream && !transportProblem(delivery, transport) ? resolveStream(stream, delivery, transport) : undefined}
                 note={note}
                 delivery={delivery}
                 muted={isStreamMuted(state, slot)}

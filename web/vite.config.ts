@@ -13,6 +13,9 @@ export default defineConfig({
     // Tests must not depend on a developer's web/.env.local: pin every base URL. Empty means "not configured".
     env: {
       VITE_LOCAL_BASE: 'http://localhost:8788',
+      VITE_LOCAL_BASE_H1: '',
+      VITE_LOCAL_BASE_H2: '',
+      VITE_LOCAL_BASE_H3: '',
       VITE_S3_BASE: '',
       VITE_S3_NEAR_BASE: '',
       VITE_S3_FAR_BASE: '',

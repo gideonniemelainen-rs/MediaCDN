@@ -27,6 +27,13 @@ export const DELIVERY_LABEL: Record<Delivery, string> = {
   'cdn-s3': 'Media CDN → S3',
 }
 
+/**
+ * The HTTP version asked for, for the local origin only (see infra/local). The other deliveries
+ * negotiate whatever their server offers, which the telemetry records as it was observed.
+ */
+export type Transport = 'h1' | 'h2' | 'h3'
+export const TRANSPORTS: Transport[] = ['h1', 'h2', 'h3']
+
 export interface Variant {
   protocol: Protocol
   /** Absolute URL for `direct`; a path under the delivery's base URL for the others. */
@@ -61,6 +68,20 @@ const BASES: Partial<Record<Delivery, string>> = {
   's3-far': trim(env.VITE_S3_FAR_BASE),
   'cdn-public': trim(env.VITE_CDN_BASE),
   'cdn-s3': trim(env.VITE_CDN_BASE),
+}
+
+/** The local origin behind the transport lab's listeners. Unset means that transport is not available. */
+const TRANSPORT_VAR: Record<Transport, string> = { h1: 'VITE_LOCAL_BASE_H1', h2: 'VITE_LOCAL_BASE_H2', h3: 'VITE_LOCAL_BASE_H3' }
+const TRANSPORT_BASES: Record<Transport, string | undefined> = {
+  h1: trim(env.VITE_LOCAL_BASE_H1),
+  h2: trim(env.VITE_LOCAL_BASE_H2),
+  h3: trim(env.VITE_LOCAL_BASE_H3),
+}
+
+/** Why a requested transport cannot be used, or undefined when it can (or none was requested). */
+export function transportProblem(delivery: Delivery, transport: Transport | null | undefined): string | undefined {
+  if (!transport || delivery !== 'local') return undefined
+  return TRANSPORT_BASES[transport] ? undefined : `Set ${TRANSPORT_VAR[transport]} to play over ${transport} (see infra/local/README.md)`
 }
 
 const BLENDER_WEB = 'https://video.blender.org/download/web-videos/'
@@ -172,14 +193,17 @@ const MIME: Record<Protocol, string | undefined> = {
   dash: undefined,
 }
 
-/** The URL and protocol for a stream under a delivery mode, or undefined if it isn't offered there. */
-export function resolveStream(stream: Stream, delivery: Delivery): Resolved | undefined {
+/**
+ * The URL and protocol for a stream under a delivery mode, or undefined if it isn't offered there.
+ * A transport picks the lab listener for the local origin and is ignored for every other delivery.
+ */
+export function resolveStream(stream: Stream, delivery: Delivery, transport?: Transport | null): Resolved | undefined {
   const variant = stream.variants[delivery]
   if (!variant) return undefined
   if (delivery === 'direct') {
     return { url: variant.location, protocol: variant.protocol, mimeType: MIME[variant.protocol] }
   }
-  const base = BASES[delivery]
+  const base = delivery === 'local' && transport ? TRANSPORT_BASES[transport] : BASES[delivery]
   return base
     ? { url: base + variant.location, protocol: variant.protocol, mimeType: MIME[variant.protocol] }
     : undefined
