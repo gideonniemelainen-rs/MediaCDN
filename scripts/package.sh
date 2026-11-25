@@ -1,36 +1,30 @@
 #!/usr/bin/env bash
 # Transcodes media/src/<slug>.mp4 into an ABR ladder and writes DASH (manifest.mpd) and
 # HLS (master.m3u8) over the same CMAF segments into origin/<slug>/.
-# Usage: scripts/package.sh <slug> [--quick]   (--quick: 360p + 720p only)
-# Env: INPUT=<file> and OUT=<dir> override the default paths; PROGRESS=<url> is passed to ffmpeg's
-# -progress (e.g. pipe:1) so a caller can follow the encode.
+# Usage: RUNGS="<spec>" scripts/package.sh <slug>   (by hand, use: node scripts/package-title.mjs <slug> [--quick], which sets RUNGS)
+# Env: RUNGS (required) the ladder as `height:kbps:maxrate:bufsize` tokens, e.g. "360:800:1200:1600 720:2800:4200:5600".
+#      shared/src/ladder.ts (encodeSpec) writes it; this script holds no bitrate table of its own.
+#      SRC_H source height, for the log line only.
+#      PRINT_ARGS=1 prints the filter graph and the per-rung ffmpeg arguments, one per line, and exits before
+#      checking the input or touching anything (the test hook that checks the script uses the rungs it is given).
+#      INPUT=<file> and OUT=<dir> override the default paths; PROGRESS=<url> is passed to ffmpeg's
+#      -progress (e.g. pipe:1) so a caller can follow the encode.
 set -euo pipefail
 
-slug=${1:?usage: package.sh <slug> [--quick]}
-quick=${2:-}
+slug=${1:?usage: RUNGS="<spec>" package.sh <slug>}
+rungs=${RUNGS:?RUNGS is required: the ladder as height:kbps:maxrate:bufsize tokens (see shared/src/ladder.ts, encodeSpec)}
 root=$(cd "$(dirname "$0")/.." && pwd)
 in="${INPUT:-$root/media/src/$slug.mp4}"
 out="${OUT:-$root/origin/$slug}"
 SEG=4
 
-[ -f "$in" ] || { echo "missing $in (run: node scripts/fetch-sources.mjs $slug)" >&2; exit 1; }
-command -v ffmpeg >/dev/null || { echo "ffmpeg not found" >&2; exit 1; }
-
-src_h=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$in")
-
-# height:video-kbps; rungs taller than the source are skipped (no upscaling)
-if [ "$quick" = "--quick" ]; then
-  rungs="360:800 720:2800"
-else
-  rungs="240:400 360:800 480:1400 720:2800 1080:5000"
+if [ -z "${PRINT_ARGS:-}" ]; then
+  [ -f "$in" ] || { echo "missing $in (run: node scripts/fetch-sources.mjs $slug)" >&2; exit 1; }
+  command -v ffmpeg >/dev/null || { echo "ffmpeg not found" >&2; exit 1; }
 fi
-sel=""
-for r in $rungs; do
-  if [ "${r%%:*}" -le "$src_h" ]; then sel="$sel $r"; fi
-done
-[ -n "$sel" ] || sel="$src_h:800"
+
 # shellcheck disable=SC2086
-set -- $sel
+set -- $rungs
 n=$#
 
 filter="[0:v]split=$n"
@@ -38,16 +32,21 @@ for i in $(seq 0 $((n - 1))); do filter="$filter[s$i]"; done
 args=()
 i=0
 for r in "$@"; do
-  h=${r%%:*}
-  b=${r##*:}
+  IFS=: read -r h b maxrate bufsize <<<"$r"
+  [ -n "$bufsize" ] || { echo "bad rung \"$r\": expected height:kbps:maxrate:bufsize" >&2; exit 1; }
   filter="$filter;[s$i]scale=-2:$h[v$i]"
-  args+=(-map "[v$i]" "-b:v:$i" "${b}k" "-maxrate:v:$i" "$((b * 3 / 2))k" "-bufsize:v:$i" "$((b * 2))k")
+  args+=(-map "[v$i]" "-b:v:$i" "${b}k" "-maxrate:v:$i" "${maxrate}k" "-bufsize:v:$i" "${bufsize}k")
   i=$((i + 1))
 done
 
+if [ -n "${PRINT_ARGS:-}" ]; then
+  printf '%s\n' "$filter" "${args[@]}"
+  exit 0
+fi
+
 rm -rf "$out"
 mkdir -p "$out"
-echo "packaging $slug (source ${src_h}p) -> rungs:$sel"
+echo "packaging $slug (source ${SRC_H:-?}p) -> rungs:$rungs"
 # Empty-array expansion is an error under `set -u` on bash 3.2 (macOS), hence the + form.
 progress=(-stats)
 [ -z "${PROGRESS:-}" ] || progress=(-nostats -progress "$PROGRESS")

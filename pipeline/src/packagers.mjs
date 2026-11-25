@@ -3,7 +3,7 @@
 //   shaka   scripts/package-shaka.sh in the worker image (ffmpeg encodes the rungs, Shaka Packager
 //           writes CMAF HLS and DASH). The image is the only place Shaka Packager is installed.
 import { dirname, join } from 'node:path'
-import { formatRungs } from './ladder.mjs'
+import { encodeSpec } from '../../shared/src/ladder.ts'
 
 export const PACKAGERS = ['ffmpeg', 'shaka']
 export const DEFAULT_IMAGE = 'mediacdn-pipeline:dev'
@@ -20,14 +20,14 @@ export function packagerKind(value) {
  * @param {string} o.mezzanine  host path of the mezzanine
  * @param {string} o.stage      host path of the (existing) staging directory
  * @param {string} o.outputId
- * @param {{height:number,kbps:number}[]} o.rungs  used by shaka only
+ * @param {{height:number,kbps:number}[]} o.rungs  the ladder; both packagers take it as `RUNGS` (shared/src/ladder.ts encodeSpec) and hold no table of their own
  * @param {number|null} [o.crf]                    shaka only: encode each rung at this constant quality, capped by its kbps (VBV); without it kbps is the target rate
- * @param {number} o.sourceHeight                  used by shaka only, for the log line
+ * @param {number} o.sourceHeight                  for the log line
  * @returns {{ cmd: string, args: string[], env: Record<string,string|undefined> }}
  */
 export function packageCommand({ kind, mezzanine, stage, outputId, rungs, crf, sourceHeight, scriptsDir, packageScript, image = DEFAULT_IMAGE, uid, gid, env = process.env }) {
   if (kind === 'ffmpeg') {
-    return { cmd: 'bash', args: [packageScript, outputId], env: { ...env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1' } }
+    return { cmd: 'bash', args: [packageScript, outputId], env: { ...env, INPUT: mezzanine, OUT: stage, PROGRESS: 'pipe:1', RUNGS: encodeSpec(rungs), SRC_H: String(sourceHeight) } }
   }
   const e = (k, v) => ['-e', `${k}=${v}`]
   return {
@@ -43,7 +43,7 @@ export function packageCommand({ kind, mezzanine, stage, outputId, rungs, crf, s
       ...e('INPUT', `/in/${mezzanine.split('/').pop()}`),
       ...e('OUT', '/out'),
       ...e('PROGRESS', 'pipe:1'),
-      ...e('RUNGS', formatRungs(rungs)),
+      ...e('RUNGS', encodeSpec(rungs)),
       ...(crf ? e('CRF', crf) : []),
       ...e('SRC_H', sourceHeight),
       ...e('SLUG', outputId),

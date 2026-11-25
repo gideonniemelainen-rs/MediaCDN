@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { LADDER_CRF, selectRungs } from './ladder.mjs'
+import { LADDER_CRF, selectRungs } from '../../shared/src/ladder.ts'
 import { createSteps } from './steps.mjs'
 
 const profile = { name: 'test', limits: {}, normalise: {} }

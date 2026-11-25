@@ -5,8 +5,10 @@
 #   packager cuts them into chunks, keeping the file layout the origin, the catalog and the
 #   verify stage already read: master.m3u8, manifest.mpd, media_N.m3u8, init-N.m4s, chunk-N-NNNNN.m4s
 #   (video rungs 0..n-1, audio n).
-# Env: INPUT mezzanine, OUT output directory, RUNGS "360:800 720:2800" (height:kbps),
+# Env: INPUT mezzanine, OUT output directory, RUNGS "360:800:1200:1600 720:2800:4200:5600" (height:kbps:maxrate:bufsize, from shared/src/ladder.ts encodeSpec),
 #      CRF (optional) constant quality: each rung is then capped at 1.5x its kbps (VBV) instead of aimed at it,
+#      PRINT_ARGS=1 prints the filter graph and the per-rung ffmpeg arguments, one per line, and exits before encoding
+#      (the test hook that checks the script uses the rungs it is given; it still reads INPUT's frame rate),
 #      SLUG and SRC_H for the log line, SEG segment seconds (default 4), PROGRESS for ffmpeg -progress.
 set -euo pipefail
 
@@ -18,7 +20,7 @@ SEG=${SEG:-4}
 tmp="$out/.rungs"
 
 [ -f "$in" ] || { echo "missing $in" >&2; exit 1; }
-mkdir -p "$out" "$tmp"
+[ -n "${PRINT_ARGS:-}" ] || mkdir -p "$out" "$tmp"
 trap 'rm -rf "$tmp"' EXIT
 
 # Keyframes every SEG seconds, so each segment starts on one and the packager cuts exactly there.
@@ -36,8 +38,8 @@ for i in $(seq 0 $((n - 1))); do filter="$filter[s$i]"; done
 args=()
 i=0
 for r in "$@"; do
-  h=${r%%:*}
-  b=${r##*:}
+  IFS=: read -r h b maxrate bufsize <<<"$r"
+  [ -n "$bufsize" ] || { echo "bad rung \"$r\": expected height:kbps:maxrate:bufsize" >&2; exit 1; }
   # setsar=1 after scale: scale=-2:240 of a 1280x720 source otherwise leaves sar=640:639.
   filter="$filter;[s$i]scale=-2:$h,setsar=1[v$i]"
   # Capped CRF (the content-aware ladder) or a target rate (the fixed ladder); VBV below bounds the peaks either way.
@@ -47,10 +49,15 @@ for r in "$@"; do
   # filter chain, and without them the playlist has no VIDEO-RANGE and the MPD no colour description.
   args+=(-map "[v$i]" -an -c:v libx264 -preset veryfast -profile:v high -pix_fmt yuv420p
     -colorspace bt709 -color_primaries bt709 -color_trc bt709 -color_range tv
-    "${rate[@]}" -maxrate "$((b * 3 / 2))k" -bufsize "$((b * 2))k"
+    "${rate[@]}" -maxrate "${maxrate}k" -bufsize "${bufsize}k"
     -g "$gop" -keyint_min "$gop" -sc_threshold 0 "$tmp/v$i.mp4")
   i=$((i + 1))
 done
+
+if [ -n "${PRINT_ARGS:-}" ]; then
+  printf '%s\n' "$filter" "${args[@]}"
+  exit 0
+fi
 
 echo "packaging $slug (source ${SRC_H:-?}p) -> rungs:$rungs"
 progress=(-stats)

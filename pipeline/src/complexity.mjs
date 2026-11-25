@@ -1,4 +1,4 @@
-// Measures how expensive a title is to encode, for the content-aware ladder (ladder.mjs).
+// Measures how expensive a title is to encode, for the content-aware ladder (shared/src/ladder.ts).
 // A few short windows of the mezzanine are encoded at constant quality (CRF) at every candidate height in
 // one ffmpeg pass per window; the size of each output over its duration is the bitrate that quality costs.
 // Flat screen recordings come out at a fraction of the bitrate of film at the same height.

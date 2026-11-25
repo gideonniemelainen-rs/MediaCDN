@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { RUNGS, formatRungs, selectRungs } from './ladder.mjs'
+import { formatRungs, selectRungs } from '../../shared/src/ladder.ts'
 import { DEFAULT_IMAGE, explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
-import { parseRungsLine, verifyPackage } from './package.mjs'
+import { verifyPackage } from './package.mjs'
 
 test('the ladder never upscales and always keeps a rung at or below 360p', () => {
   assert.deepEqual(selectRungs(1080).map((r) => r.height), [240, 360, 480, 720, 1080])
@@ -21,14 +21,14 @@ test('quick keeps 360p and 720p only', () => {
   assert.deepEqual(selectRungs(480, { quick: true }).map((r) => r.height), [360])
 })
 
-test('the ladder matches the heights and bitrates scripts/package.sh uses', () => {
-  assert.deepEqual(RUNGS.map((r) => `${r.height}:${r.kbps}`), ['240:400', '360:800', '480:1400', '720:2800', '1080:5000'])
+test('formatRungs gives the short form the logs and the Upload page show', () => {
+  assert.equal(formatRungs(selectRungs(720)), '240:400 360:800 480:1400 720:2800')
 })
 
-test('rungs round-trip through the script argument and the log line the stage parses', () => {
-  const rungs = selectRungs(720)
-  assert.equal(formatRungs(rungs), '240:400 360:800 480:1400 720:2800')
-  assert.deepEqual(parseRungsLine(`packaging x (source 720p) -> rungs:${formatRungs(rungs)}`), rungs)
+test('both packagers are handed the same ladder in the same form', () => {
+  const env = packageCommand({ ...base, kind: 'ffmpeg', env: {} }).env.RUNGS
+  const arg = packageCommand({ ...base, kind: 'shaka' }).args.find((a) => a.startsWith('RUNGS='))
+  assert.equal(arg, `RUNGS=${env}`)
 })
 
 test('PIPELINE_PACKAGER accepts the known packagers and refuses a typo', () => {
@@ -43,11 +43,14 @@ const base = {
   scriptsDir: '/repo/pipeline/scripts', packageScript: '/repo/scripts/package.sh',
 }
 
-test('the ffmpeg packager runs package.sh on the host with the same environment as before', () => {
+test('the ffmpeg packager runs package.sh on the host and hands it the ladder', () => {
   const c = packageCommand({ ...base, kind: 'ffmpeg', env: { PATH: '/bin' } })
   assert.equal(c.cmd, 'bash')
   assert.deepEqual(c.args, ['/repo/scripts/package.sh', 'ugc-demo'])
-  assert.deepEqual(c.env, { PATH: '/bin', INPUT: '/work/abc/mezzanine.mkv', OUT: '/origin/.tmp-1', PROGRESS: 'pipe:1' })
+  assert.deepEqual(c.env, {
+    PATH: '/bin', INPUT: '/work/abc/mezzanine.mkv', OUT: '/origin/.tmp-1', PROGRESS: 'pipe:1',
+    RUNGS: '240:400:600:800 360:800:1200:1600 480:1400:2100:2800 720:2800:4200:5600', SRC_H: '720',
+  })
 })
 
 test('the shaka packager runs the worker image with no network, no capabilities and the host user', () => {
@@ -59,7 +62,7 @@ test('the shaka packager runs the worker image with no network, no capabilities 
   assert.ok(a.includes('-v /origin/.tmp-1:/out'))
   assert.ok(a.includes('-v /repo/pipeline/scripts:/scripts:ro'))
   assert.ok(a.includes('-e INPUT=/in/mezzanine.mkv') && a.includes('-e OUT=/out') && a.includes('-e PROGRESS=pipe:1'))
-  assert.ok(a.includes('-e RUNGS=240:400 360:800 480:1400 720:2800') && a.includes('-e SRC_H=720') && a.includes('-e SLUG=ugc-demo'))
+  assert.ok(a.includes('-e RUNGS=240:400:600:800 360:800:1200:1600 480:1400:2100:2800 720:2800:4200:5600') && a.includes('-e SRC_H=720') && a.includes('-e SLUG=ugc-demo'))
   assert.ok(a.endsWith(`--entrypoint bash ${DEFAULT_IMAGE} /scripts/package-shaka.sh`))
 })
 

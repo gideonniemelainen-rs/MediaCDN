@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Generates ad-style test assets and packages them like content:
 //   media/src/ads/<id>.mp4        encoded source (git-ignored)
-//   origin/ads/<id>/              HLS + DASH ladder (scripts/package.sh) plus ad.mp4, a progressive copy for VAST/CSAI
+//   origin/ads/<id>/              HLS + DASH ladder (scripts/package-title.mjs) plus ad.mp4, a progressive copy for VAST/CSAI
 //   origin/ads/ads.json           the inventory the app reads
 //
 // Two kinds: synthetic (testsrc2, distinct hue, N blocks for "ad N", moving progress marker, own tone)
@@ -85,8 +85,8 @@ for (const ad of todo) {
   console.log(`== ${ad.id}: ${ad.label}`)
   if (ad.kind === 'synthetic') synthetic(ad, src)
   else cut(ad, src)
-  run('bash', [join(root, 'scripts/package.sh'), `ads/${ad.id}`])
-  // package.sh recreates the folder, so the progressive copy goes in afterwards.
+  run('node', [join(root, 'scripts/package-title.mjs'), `ads/${ad.id}`])
+  // packaging recreates the folder, so the progressive copy goes in afterwards.
   copyFileSync(src, join(root, 'origin/ads', ad.id, 'ad.mp4'))
 }
 

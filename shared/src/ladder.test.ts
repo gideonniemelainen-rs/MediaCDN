@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { LADDER_CRF, SCREEN_BPP, bitsPerPixel, candidateHeights, planLadder } from './ladder.mjs'
+import { LADDER_CRF, RUNGS, SCREEN_BPP, bitsPerPixel, candidateHeights, encodeSpec, planLadder } from './ladder.ts'
+import type { LadderPlan } from './ladder.ts'
 
-const heights = (plan) => plan.rungs.map((r) => r.height)
-const kbps = (plan) => plan.rungs.map((r) => r.kbps)
+const heights = (plan: LadderPlan) => plan.rungs.map((r) => r.height)
+const kbps = (plan: LadderPlan) => plan.rungs.map((r) => r.kbps)
 
 // What a constant-quality probe measured on real clips: 720p film (bbb), and a 1920x1020 screen recording.
 const FILM = [{ height: 240, kbps: 260 }, { height: 360, kbps: 538 }, { height: 480, kbps: 850 }, { height: 720, kbps: 1360 }]
@@ -21,7 +22,7 @@ test('a screen recording costs a fraction of the fixed ladder and loses the unre
   const plan = planLadder(SCREEN, { aspect: 1920 / 1020, fps: 30 })
   assert.equal(plan.class, 'screen')
   assert.deepEqual(heights(plan), [360, 480, 720])
-  assert.ok(plan.rungs.at(-1).kbps <= 300, `720p at ${plan.rungs.at(-1).kbps} kbps, against 2800 in the fixed table`)
+  assert.ok(plan.rungs.at(-1)!.kbps <= 300, `720p at ${plan.rungs.at(-1)!.kbps} kbps, against 2800 in the fixed table`)
   assert.equal(plan.dropped[0].height, 240)
 })
 
@@ -75,4 +76,16 @@ test('candidates are the table rungs the source can fill', () => {
 test('nothing measured is an error, and the probe quality is a constant', () => {
   assert.throws(() => planLadder([], { aspect: 16 / 9, fps: 30 }), /at least one/)
   assert.equal(LADDER_CRF, 21)
+})
+
+test('encodeSpec gives each rung its peak and buffer limits in whole kbps, so scripts do no arithmetic', () => {
+  assert.equal(encodeSpec([{ height: 360, kbps: 800 }, { height: 720, kbps: 2800 }]), '360:800:1200:1600 720:2800:4200:5600')
+  // A rate that does not divide evenly rounds down, as the scripts' integer arithmetic did.
+  assert.equal(encodeSpec([{ height: 360, kbps: 125 }]), '360:125:187:250')
+})
+
+// The only copy of the fixed table: the packaging scripts take it from here (pipeline/src/packager-scripts.test.mjs
+// checks they use whatever they are given), so changing it changes every title packaged at the fixed ladder.
+test('the fixed ladder is 240p to 1080p at these rates', () => {
+  assert.deepEqual(RUNGS.map((r) => `${r.height}:${r.kbps}`), ['240:400', '360:800', '480:1400', '720:2800', '1080:5000'])
 })

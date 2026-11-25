@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { isProgressNoise, parseProgressLine } from './ingest.mjs'
-import { chooseOutputId, parseRungsLine, verifyPackage } from './package.mjs'
+import { chooseOutputId, verifyPackage } from './package.mjs'
 import { hostAllowed, originAllowed, safeExt } from './server.mjs'
 
 // Shaped like ffmpeg's DASH-muxer HLS output (see origin/bbb).
@@ -61,15 +61,6 @@ test('verifyPackage catches each kind of damage', () => {
 
   const empty = { id: 'ugc-demo', files: [], master: '', playlists: {} }
   assert.equal(verifyPackage(empty).ok, false)
-})
-
-test('parseRungsLine reads package.sh output', () => {
-  assert.deepEqual(parseRungsLine('packaging ugc-demo (source 1080p) -> rungs: 240:400 360:800 1080:5000'), [
-    { height: 240, kbps: 400 },
-    { height: 360, kbps: 800 },
-    { height: 1080, kbps: 5000 },
-  ])
-  assert.equal(parseRungsLine('done: 12 files, 3.1M'), null)
 })
 
 test('the key=value lines of ffmpeg -progress are noise, padded or not, and real log lines are not', () => {

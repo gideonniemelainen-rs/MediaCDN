@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import shaka from 'shaka-player'
+import { UNFOCUSED_MAX_HEIGHT } from '@shared/ladder.ts'
 import { DELIVERY_LABEL, type Delivery, type Resolved } from './catalog'
 import { Controls } from './Controls'
 import { attachTelemetry, recordAbrCap, recordLoadStart } from './telemetry/shaka'
@@ -19,9 +20,6 @@ interface Props {
   adActive: boolean
   onTakeAudio: () => void
 }
-
-// Cap unfocused quadrants so four concurrent decodes stay usable.
-const UNFOCUSED_MAX_HEIGHT = 360
 
 export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted, focused, uncapped, adActive, onTakeAudio }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)

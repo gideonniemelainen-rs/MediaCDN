@@ -1,0 +1,5 @@
+{
+  "name": "mediacdn-shared",
+  "private": true,
+  "type": "module"
+}

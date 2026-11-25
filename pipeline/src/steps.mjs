@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url'
 import { IngestError, isProgressNoise, jobPaths, normaliseFile, parseProgressLine, probeFile, readJob, writeJob } from './ingest.mjs'
 import { PIPELINE_VERSION, jobKey } from './job.mjs'
 import { gopFrames, measureComplexity } from './complexity.mjs'
-import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from './ladder.mjs'
-import { chooseOutputId, parseRungsLine, verifyPackage } from './package.mjs'
+import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from '../../shared/src/ladder.ts'
+import { chooseOutputId, verifyPackage } from './package.mjs'
 import { explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
 import { validate } from './validate.mjs'
@@ -120,7 +120,8 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
         ctx.shared.ladder = { rungs: fixed, crf: null }
         return { summary: `${fixed.map((r) => `${r.height}p`).join(', ')} · fixed ladder${why ? ` (${why})` : ''}`, result: { rungs: fixed, fixed: true, reason: why ?? null } }
       }
-      // package.sh has its own table, so a measured ladder would only be a claim about a different encode.
+      // package.sh encodes each rung at its target rate, not at constant quality, so rates measured at a constant quality
+      // would be a claim about a different encode.
       if (kind !== 'shaka') return fallback('the ffmpeg packager uses a fixed table')
       const fps = ctx.shared.fps
       if (!fps) return fallback('frame rate unknown')
@@ -174,7 +175,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
         uid: process.getuid?.(),
         gid: process.getgid?.(),
       })
-      let rungs = []
+      const { rungs } = ladder
       const tail = []
       await new Promise((resolve, reject) => {
         const child = spawn(cmd, args, { env, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -182,7 +183,6 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
           const p = parseProgressLine(line, info.duration)
           if (p !== null) return h.progress(p)
           if (isProgressNoise(line)) return
-          rungs = parseRungsLine(line) ?? rungs
           h.log(line)
         })
         createInterface({ input: child.stderr }).on('line', (line) => {
@@ -196,7 +196,6 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
         await rm(stage, { recursive: true, force: true })
         throw new StageError('E_PACKAGE_FAILED', e.message)
       })
-      ctx.shared.rungs = rungs
       const bytes = await dirBytes(stage)
       return { summary: `${rungs.map((r) => `${r.height}p`).join(', ')} · ${mb(bytes)} · ${kind === 'shaka' ? 'Shaka Packager' : 'ffmpeg'}`, result: { rungs, bytes, packager: kind } }
     },

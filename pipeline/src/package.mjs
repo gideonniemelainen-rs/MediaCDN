@@ -5,18 +5,6 @@ import { parseMediaPlaylist } from '../../tools/live.mjs'
 
 const MAX_SEGMENT_SECONDS = 6
 
-/** Rungs from package.sh's `packaging <slug> (source 720p) -> rungs: 360:800 720:2800` line. */
-export function parseRungsLine(line) {
-  const m = /-> rungs:(.*)$/.exec(line)
-  if (!m) return null
-  return m[1]
-    .trim()
-    .split(/\s+/)
-    .map((r) => r.split(':').map(Number))
-    .filter(([h, k]) => h > 0 && k > 0)
-    .map(([height, kbps]) => ({ height, kbps }))
-}
-
 /**
  * Output id for an upload: `ugc-<slug>` so uploads cannot overwrite sample titles. `existing`
  * maps each directory already in origin/ to the source sha recorded in it (null if none). A
