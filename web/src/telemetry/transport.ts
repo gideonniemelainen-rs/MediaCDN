@@ -10,6 +10,7 @@ export interface TimingEntry {
   requestStart: number
   responseStart: number
   nextHopProtocol: string
+  transferSize: number
 }
 
 export interface TransportTiming {
@@ -18,6 +19,8 @@ export interface TransportTiming {
   connectMs: number | null
   /** Request sent to first byte. Null when the browser hid the timings. */
   ttfbMs: number | null
+  /** The browser answered from its HTTP cache, so no network protocol or timing exists for this request. */
+  httpCache: boolean
 }
 
 /** How far before the response filter ran an entry may have finished and still be its request. */
@@ -57,9 +60,13 @@ export function pickTiming(
   const transport = normaliseTransport(best.nextHopProtocol)
   // Without Timing-Allow-Origin a cross-origin entry reports zeros for everything but the end times.
   const hidden = transport === 'unknown' && best.requestStart === 0
+  // A cache hit has a request time but no bytes over the network and no protocol; its "first byte" is a disk read.
+  const httpCache = !hidden && best.transferSize === 0 && best.nextHopProtocol === ''
+  const unusable = hidden || httpCache
   return {
     transport,
-    connectMs: hidden ? null : Math.max(0, best.connectEnd - best.connectStart),
-    ttfbMs: hidden || best.responseStart < best.requestStart ? null : best.responseStart - best.requestStart,
+    connectMs: unusable ? null : Math.max(0, best.connectEnd - best.connectStart),
+    ttfbMs: unusable || best.responseStart < best.requestStart ? null : best.responseStart - best.requestStart,
+    httpCache,
   }
 }

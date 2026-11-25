@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Telemetry } from './store'
-import { dominantTransport, summarize, summarizeByTransport, toCSV, type Summary } from './metrics'
+import { capOf, dominantTransport, summarize, summarizeByTransport, toCSV, type Summary } from './metrics'
 import type { EventType, TelemetryEvent } from './types'
 
 const ev = (t: number, type: EventType, data: Record<string, unknown> = {}, slot = 0): TelemetryEvent => ({
@@ -103,6 +103,7 @@ describe('observed transport', () => {
     expect(dominantTransport([req(1, { transport: 'h2' }), req(2, { transport: 'h3' }), req(3, { transport: 'h3' })])).toBe('h3')
     expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, {})])).toBe('unknown')
     expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, { transport: 'h2' })])).toBe('h2')
+    expect(dominantTransport([req(1, { transport: 'h1' }), req(2, { transport: 'h1' }), req(3, { transport: 'h2' })])).toBe('h1')
   })
 
   it('goes into the summary with mean time to first byte and mean connect time over new connections only', () => {
@@ -150,5 +151,16 @@ describe('summarizeByTransport', () => {
 
   it('skips idle quadrants and ones with no requests yet', () => {
     expect(summarizeByTransport([{ delivery: 'local', summary: null }, { delivery: 'local', summary: sum(null) }])).toEqual([])
+  })
+})
+
+describe('capOf', () => {
+  it('is the last cap recorded for the quadrant, null when uncapped (Infinity live, null from JSON), undefined when none', () => {
+    const cap = (t: number, slot: number, maxHeight: number | null) => ev(t, 'abr-cap', { maxHeight }, slot)
+    expect(capOf([], 0)).toBeUndefined()
+    expect(capOf([cap(1, 0, 360), cap(2, 0, Infinity)], 0)).toBeNull()
+    expect(capOf([cap(1, 0, Infinity), cap(2, 0, 360), cap(3, 1, null)], 0)).toBe(360)
+    expect(capOf([cap(1, 1, null)], 1)).toBeNull()
+    expect(capOf([cap(1, 1, 360)], 0)).toBeUndefined()
   })
 })

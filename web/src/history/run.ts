@@ -1,6 +1,6 @@
 // Turning the live telemetry into a saved run, and a saved run back into a comparison. Pure.
 import { SLOT_COUNT } from '../state'
-import { sessionEvents, summarize, type Summary } from '../telemetry/metrics'
+import { capOf, sessionEvents, summarize, type Summary } from '../telemetry/metrics'
 import type { TelemetryEvent } from '../telemetry/types'
 import type { EventsBlob, RunPayload } from './types'
 
@@ -56,6 +56,8 @@ export interface RebuiltRow {
   streamId: string
   delivery: string
   summary: Summary
+  /** The ABR cap the quadrant had (null when uncapped, undefined for a run saved before caps were kept). */
+  maxHeight?: number | null
 }
 
 /** The per-quadrant summaries recomputed from a saved blob, exactly as the live panel computed them. */
@@ -64,7 +66,7 @@ export function rebuildRows(blob: Pick<EventsBlob, 'events' | 'nowMs'>, slots = 
   for (let slot = 0; slot < slots; slot++) {
     const own = sessionEvents(blob.events, slot)
     const summary = summarize(blob.events, slot, blob.nowMs)
-    if (own.length && summary) rows.push({ slot, streamId: own[0].streamId, delivery: own[0].delivery, summary })
+    if (own.length && summary) rows.push({ slot, streamId: own[0].streamId, delivery: own[0].delivery, summary, maxHeight: capOf(blob.events, slot) })
   }
   return rows
 }

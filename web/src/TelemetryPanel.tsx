@@ -4,7 +4,7 @@ import { useAuth } from './auth/useAuth'
 import { saveRun } from './history/api'
 import { buildRunPayload } from './history/run'
 import { SLOT_COUNT } from './state'
-import { toCSV, toJSON, summarize } from './telemetry/metrics'
+import { capOf, toCSV, toJSON, summarize } from './telemetry/metrics'
 import { SummaryTable } from './telemetry/SummaryTable'
 import { TransportTable } from './telemetry/TransportTable'
 import { telemetry } from './telemetry/store'
@@ -30,7 +30,7 @@ export function TelemetryPanel() {
   const rows = Array.from({ length: SLOT_COUNT }, (_, slot) => {
     const summary = summarize(events, slot, now)
     const first = [...events].reverse().find((e) => e.slot === slot && e.type === 'load-start')
-    return { slot, summary, streamId: first?.streamId, delivery: first?.delivery }
+    return { slot, summary, streamId: first?.streamId, delivery: first?.delivery, maxHeight: capOf(events, slot) }
   })
   const hasRun = rows.some((r) => r.summary)
 

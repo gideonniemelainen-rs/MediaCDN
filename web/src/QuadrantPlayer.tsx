@@ -13,6 +13,8 @@ interface Props {
   delivery: Delivery
   muted: boolean
   focused: boolean
+  /** Lift the 360p cap on unfocused quadrants, so quadrants can be compared at the same quality. */
+  uncapped: boolean
   /** An ad is covering this quadrant, so the stream's own controls are hidden. */
   adActive: boolean
   onTakeAudio: () => void
@@ -21,7 +23,7 @@ interface Props {
 // Cap unfocused quadrants so four concurrent decodes stay usable.
 const UNFOCUSED_MAX_HEIGHT = 360
 
-export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted, focused, adActive, onTakeAudio }: Props) {
+export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted, focused, uncapped, adActive, onTakeAudio }: Props) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null)
   const playerRef = useRef<shaka.Player | null>(null)
@@ -70,10 +72,10 @@ export function QuadrantPlayer({ slot, streamId, resolved, note, delivery, muted
   }, [slot, streamId, url, mimeType, delivery])
 
   useEffect(() => {
-    const maxHeight = focused ? Infinity : UNFOCUSED_MAX_HEIGHT
+    const maxHeight = focused || uncapped ? Infinity : UNFOCUSED_MAX_HEIGHT
     playerRef.current?.configure({ abr: { restrictions: { maxHeight } } })
     if (streamId && url) recordAbrCap({ slot, streamId, delivery }, maxHeight)
-  }, [focused, slot, streamId, url, delivery])
+  }, [focused, uncapped, slot, streamId, url, delivery])
 
   return (
     <>

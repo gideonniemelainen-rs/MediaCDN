@@ -83,6 +83,7 @@ export function attachTelemetry(player: shaka.Player, video: HTMLVideoElement, c
       transport: 'unknown',
       connectMs: null,
       ttfbMs: null,
+      httpCache: false,
     }
     rec('request', data)
     resolveTransport(data, response.uri, performance.now())

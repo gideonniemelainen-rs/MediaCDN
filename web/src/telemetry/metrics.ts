@@ -1,5 +1,5 @@
 import type { TelemetryEvent } from './types'
-import { normaliseTransport, type ObservedTransport } from './transport'
+import type { ObservedTransport } from './transport'
 
 export interface Summary {
   startupMs: number | null
@@ -27,8 +27,9 @@ export function dominantTransport(requests: readonly TelemetryEvent[]): Observed
   if (requests.length === 0) return null
   const counts = new Map<ObservedTransport, number>()
   for (const r of requests) {
-    const t = normaliseTransport(typeof r.data.transport === 'string' ? r.data.transport : undefined)
-    if (t !== 'unknown') counts.set(t, (counts.get(t) ?? 0) + 1)
+    // Request events already carry the normalised value (h1, h2, h3 or unknown), not nextHopProtocol.
+    const t = r.data.transport
+    if (t === 'h1' || t === 'h2' || t === 'h3') counts.set(t, (counts.get(t) ?? 0) + 1)
   }
   let best: ObservedTransport | null = null
   for (const [t, n] of counts) if (best === null || n > counts.get(best)!) best = t
@@ -46,6 +47,18 @@ export function sessionEvents(events: readonly TelemetryEvent[], slot: number): 
     }
   }
   return start < 0 ? [] : mine.slice(start)
+}
+
+/**
+ * The ABR height cap in force for a quadrant, from the last `abr-cap` in its whole log (the cap is set when
+ * the quadrant mounts, before its session starts): a height, null when it was uncapped, undefined when
+ * none was recorded. An uncapped quadrant is Infinity live and null once through JSON.
+ */
+export function capOf(events: readonly TelemetryEvent[], slot: number): number | null | undefined {
+  const last = events.findLast((e) => e.slot === slot && e.type === 'abr-cap')
+  if (!last) return undefined
+  const h = last.data.maxHeight
+  return typeof h === 'number' && Number.isFinite(h) ? h : null
 }
 
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null)

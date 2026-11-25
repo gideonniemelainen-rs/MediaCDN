@@ -35,6 +35,9 @@ const PRESETS: Record<string, PresetSlot[]> = {
   'compare deliveries': (['local', 's3-near', 's3-far', 'cdn-s3'] as const).map((delivery) => ({ entry: 'bbb', delivery })),
 }
 
+// Presets whose point is to compare quadrants: they lift the cap so the comparison is at equal quality.
+const COMPARING = new Set(['compare transports', 'compare deliveries'])
+
 export default function App() {
   // /?delivery=local&stream=<id>-hls is how the upload page opens a published title here.
   const [launch] = useState(() => readLaunch(window.location.search))
@@ -47,6 +50,8 @@ export default function App() {
   const [showStats, setShowStats] = useState(true)
   const [showPanel, setShowPanel] = useState(true)
   const [showBench, setShowBench] = useState(false)
+  // Unfocused quadrants are capped at 360p, which makes bitrate and segment times incomparable with the focused one.
+  const [uncapped, setUncapped] = useState(false)
   const [adMessage, setAdMessage] = useState<string | null>(null)
   const { indexed, statusOf, reload } = useCatalogs(state.deliveries)
 
@@ -58,7 +63,8 @@ export default function App() {
 
   // A preset entry the delivery doesn't offer (e.g. a title that isn't packaged yet) falls back to
   // whichever VOD titles are available, so presets still fill the grid; 'live' stays empty if absent.
-  async function applyPreset(preset: PresetSlot[]) {
+  async function applyPreset(name: string, preset: PresetSlot[]) {
+    if (COMPARING.has(name)) setUncapped(true)
     const deliveries = preset.map((p, slot) => p.delivery ?? latest.current.deliveries[slot])
     // Titles are discovered from each delivery's index, so wait for the ones this layout needs.
     await Promise.all(deliveries.map((d) => loadIndex(d)))
@@ -111,7 +117,7 @@ export default function App() {
         </span>
         {indexed.length > 0 && <button onClick={reload}>Reload titles</button>}
         {Object.entries(PRESETS).map(([name, preset]) => (
-          <button key={name} onClick={() => void applyPreset(preset)}>
+          <button key={name} onClick={() => void applyPreset(name, preset)}>
             {name}
           </button>
         ))}
@@ -120,6 +126,9 @@ export default function App() {
         </label>
         <label>
           <input type="checkbox" checked={showPanel} onChange={(e) => setShowPanel(e.target.checked)} /> telemetry
+        </label>
+        <label title="Lift the 360p cap on unfocused quadrants, so quadrants are compared at the same quality">
+          <input type="checkbox" checked={uncapped} onChange={(e) => setUncapped(e.target.checked)} /> uncapped
         </label>
         <label>
           <input type="checkbox" checked={showBench} onChange={(e) => setShowBench(e.target.checked)} /> benchmark
@@ -195,6 +204,7 @@ export default function App() {
                 delivery={delivery}
                 muted={isStreamMuted(state, slot)}
                 focused={state.focused === slot}
+                uncapped={uncapped}
                 adActive={state.ad?.slot === slot}
                 onTakeAudio={() => dispatch({ type: 'focus', slot })}
               />

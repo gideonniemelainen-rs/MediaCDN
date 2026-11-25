@@ -9,6 +9,7 @@ const entry = (over: Partial<TimingEntry> = {}): TimingEntry => ({
   requestStart: 900,
   responseStart: 950,
   nextHopProtocol: 'h2',
+  transferSize: 5000,
   ...over,
 })
 
@@ -30,7 +31,7 @@ describe('normaliseTransport', () => {
 describe('pickTiming', () => {
   it('reads protocol, connect time and time to first byte', () => {
     const t = pickTiming([entry({ connectStart: 800, connectEnd: 860 })], 'https://cdn.test/seg-1.m4s', 1001)
-    expect(t).toEqual({ transport: 'h2', connectMs: 60, ttfbMs: 50 })
+    expect(t).toEqual({ transport: 'h2', connectMs: 60, ttfbMs: 50, httpCache: false })
   })
 
   it('reports a reused connection as 0 ms connect', () => {
@@ -39,7 +40,12 @@ describe('pickTiming', () => {
 
   it('treats a cross-origin entry without Timing-Allow-Origin as unknown, with no timings', () => {
     const hidden = entry({ nextHopProtocol: '', requestStart: 0, responseStart: 0 })
-    expect(pickTiming([hidden], hidden.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null })
+    expect(pickTiming([hidden], hidden.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null, httpCache: false })
+  })
+
+  it('recognises a response from the HTTP cache: no protocol, no network timings', () => {
+    const cached = entry({ nextHopProtocol: '', transferSize: 0, connectStart: 5, connectEnd: 5 })
+    expect(pickTiming([cached], cached.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null, httpCache: true })
   })
 
   it('returns null when no entry has that name', () => {

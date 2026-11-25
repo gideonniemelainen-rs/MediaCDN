@@ -45,7 +45,7 @@ Each quadrant picks its own delivery, so one title can be compared across source
 | `s3-near`, `s3-far` | two S3 buckets, no CDN | `VITE_S3_NEAR_BASE` (or `VITE_S3_BASE`), `VITE_S3_FAR_BASE` |
 | `cdn-public`, `cdn-s3` | Media CDN in front of a public origin or S3 | `VITE_CDN_BASE` |
 
-The telemetry table marks the best value per metric when quadrants play the same stream. Unfocused quadrants are capped at 360p, so bitrate compares unfairly between a focused and an unfocused quadrant. A saved run records each quadrant's cap, and its charts say when the caps differed; whether the live table's best-value marks should account for it is still open (see `plans/audit-2026-11-23.md`).
+The telemetry table marks the best value per metric when quadrants play the same stream. Unfocused quadrants are capped at 360p, so bitrate compares unfairly between a focused and an unfocused quadrant. A saved run records each quadrant's cap, and its charts say when the caps differed. Both the live table and a reopened run leave the average bitrate unmarked, with a note, when quadrants playing the same stream had different caps. The "uncapped" switch in the header lifts the cap on every quadrant, and the "compare" presets turn it on, so those comparisons are at equal quality. Segment times still depend on the rung chosen, so they are marked either way.
 
 ## Ingest
 

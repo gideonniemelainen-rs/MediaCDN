@@ -84,6 +84,15 @@ describe('rebuildRows', () => {
   })
 })
 
+describe('rebuildRows caps', () => {
+  it('carries each quadrant\'s cap, and leaves it undefined for a run saved before caps were kept', () => {
+    const withCaps = [ev(0, 'abr-cap', 1, { data: { maxHeight: null } }), ev(1, 'abr-cap', 1, { data: { maxHeight: 360 } }), ...EVENTS]
+    const rows = rebuildRows({ events: withCaps, nowMs: NOW })
+    expect(rows.map((r) => [r.slot, r.maxHeight])).toEqual([[0, null], [1, 360]])
+    expect(rebuildRows({ events: EVENTS, nowMs: NOW }).map((r) => r.maxHeight)).toEqual([undefined, undefined])
+  })
+})
+
 describe('describeRun', () => {
   const label = (d: string) => ({ local: 'Origin', 's3-near': 'S3 near' })[d] ?? d
   it('groups deliveries under each stream', () => {

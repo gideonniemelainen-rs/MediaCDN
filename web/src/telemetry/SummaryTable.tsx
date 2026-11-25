@@ -1,4 +1,4 @@
-import { type CompareRow, bestSlots } from './compare'
+import { type CompareRow, bestSlots, capMismatches } from './compare'
 import type { Summary } from './metrics'
 
 export interface SummaryRowData {
@@ -6,15 +6,20 @@ export interface SummaryRowData {
   streamId?: string
   delivery?: string
   summary: Summary | null
+  /** The ABR height cap: a height, null when uncapped, undefined when not recorded. */
+  maxHeight?: number | null
 }
 
 const f = (v: number | null, d = 0) => (v === null ? '-' : v.toFixed(d))
 
 /** One row per quadrant. When several play the same stream, the best value per metric is marked. */
 export function SummaryTable({ rows }: { rows: readonly SummaryRowData[] }) {
-  const best = bestSlots(rows.flatMap((r): CompareRow[] => (r.summary ? [{ slot: r.slot, streamId: r.streamId, summary: r.summary }] : [])))
+  const compare = rows.flatMap((r): CompareRow[] => (r.summary ? [{ slot: r.slot, streamId: r.streamId, summary: r.summary, maxHeight: r.maxHeight }] : []))
+  const best = bestSlots(compare)
+  const capped = capMismatches(compare)
   const win = (key: keyof typeof best, slot: number) => (best[key].has(slot) ? 'best' : undefined)
   return (
+    <>
     <table>
       <thead>
         <tr>
@@ -41,5 +46,12 @@ export function SummaryTable({ rows }: { rows: readonly SummaryRowData[] }) {
         )}
       </tbody>
     </table>
+    {capped.length > 0 && (
+      <p className="muted" role="note">
+        {capped.map((s) => `Q${s + 1}`).join(', ')} {capped.length > 1 ? 'were' : 'was'} capped at 360p while another quadrant on the same stream was not, so
+        the average bitrate is not marked. Tick “uncapped” for a fair comparison.
+      </p>
+    )}
+    </>
   )
 }
