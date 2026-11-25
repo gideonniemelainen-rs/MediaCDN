@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Telemetry } from './store'
-import { summarize, toCSV } from './metrics'
+import { dominantTransport, summarize, summarizeByTransport, toCSV, type Summary } from './metrics'
 import type { EventType, TelemetryEvent } from './types'
 
 const ev = (t: number, type: EventType, data: Record<string, unknown> = {}, slot = 0): TelemetryEvent => ({
@@ -84,6 +84,71 @@ describe('Telemetry store', () => {
 describe('toCSV', () => {
   it('quotes the data column', () => {
     const csv = toCSV([ev(1, 'error', { msg: 'a "b", c' })])
-    expect(csv.split('\n')[1]).toBe('1.0,0,bbb,direct,error,"{""msg"":""a \\""b\\"", c""}"')
+    expect(csv.split('\n')[1]).toBe('1.0,0,bbb,direct,,error,"{""msg"":""a \\""b\\"", c""}"')
+  })
+
+  it('has a transport column, filled for requests only', () => {
+    const csv = toCSV([ev(1, 'request', { kind: 'segment', transport: 'h3' }), ev(2, 'sample', { transport: 'h3' })]).split('\n')
+    expect(csv[0]).toBe('t_ms,slot,stream,delivery,transport,type,data')
+    expect(csv[1].startsWith('1.0,0,bbb,direct,h3,request,')).toBe(true)
+    expect(csv[2].startsWith('2.0,0,bbb,direct,,sample,')).toBe(true)
+  })
+})
+
+const req = (t: number, data: Record<string, unknown>, slot = 0) => ev(t, 'request', { kind: 'segment', bytes: 1000, latencyMs: 10, ...data }, slot)
+
+describe('observed transport', () => {
+  it('is the protocol most requests used, unknown when none reported one, and null with no requests', () => {
+    expect(dominantTransport([])).toBeNull()
+    expect(dominantTransport([req(1, { transport: 'h2' }), req(2, { transport: 'h3' }), req(3, { transport: 'h3' })])).toBe('h3')
+    expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, {})])).toBe('unknown')
+    expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, { transport: 'h2' })])).toBe('h2')
+  })
+
+  it('goes into the summary with mean time to first byte and mean connect time over new connections only', () => {
+    const s = summarize(
+      [
+        ev(0, 'load-start'),
+        req(1, { transport: 'h3', ttfbMs: 4, connectMs: 30 }),
+        req(2, { transport: 'h3', ttfbMs: 6, connectMs: 0 }),
+        req(3, { transport: 'h3', ttfbMs: null, connectMs: null }),
+      ],
+      0,
+      10,
+    )!
+    expect(s.transport).toBe('h3')
+    expect(s.meanTtfbMs).toBe(5)
+    expect(s.meanConnectMs).toBe(30)
+  })
+
+  it('leaves the figures null when the browser hid them', () => {
+    const s = summarize([ev(0, 'load-start'), req(1, { transport: 'unknown', ttfbMs: null, connectMs: null })], 0, 10)!
+    expect(s.transport).toBe('unknown')
+    expect(s.meanTtfbMs).toBeNull()
+    expect(s.meanConnectMs).toBeNull()
+  })
+})
+
+describe('summarizeByTransport', () => {
+  const sum = (transport: Summary['transport'], over: Partial<Summary> = {}): Summary => ({
+    startupMs: 100, rebufferCount: 0, rebufferMs: 0, rebufferRatio: 0, switches: 0, avgBitrateKbps: 1000, errors: 0, requests: 5,
+    meanSegmentLatencyMs: 20, throughputKbps: 4000, liveLatencyS: null, transport, meanTtfbMs: 5, meanConnectMs: null, ...over,
+  })
+
+  it('groups by delivery and observed protocol, averaging over the group', () => {
+    const groups = summarizeByTransport([
+      { delivery: 'local', summary: sum('h2', { startupMs: 100 }) },
+      { delivery: 'local', summary: sum('h2', { startupMs: 200 }) },
+      { delivery: 'local', summary: sum('h3', { startupMs: 50, meanConnectMs: 12 }) },
+      { delivery: 's3-near', summary: sum('unknown') },
+    ])
+    expect(groups.map((g) => `${g.delivery}/${g.transport}/${g.quadrants}`)).toEqual(['local/h2/2', 'local/h3/1', 's3-near/unknown/1'])
+    expect(groups[0].startupMs).toBe(150)
+    expect(groups[1].meanConnectMs).toBe(12)
+    expect(groups[0].meanConnectMs).toBeNull()
+  })
+
+  it('skips idle quadrants and ones with no requests yet', () => {
+    expect(summarizeByTransport([{ delivery: 'local', summary: null }, { delivery: 'local', summary: sum(null) }])).toEqual([])
   })
 })

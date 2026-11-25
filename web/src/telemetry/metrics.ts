@@ -1,4 +1,5 @@
 import type { TelemetryEvent } from './types'
+import { normaliseTransport, type ObservedTransport } from './transport'
 
 export interface Summary {
   startupMs: number | null
@@ -13,6 +14,25 @@ export interface Summary {
   meanSegmentLatencyMs: number | null
   throughputKbps: number | null
   liveLatencyS: number | null
+  /** The protocol most of the session's requests were observed to use; null before any request. */
+  transport: ObservedTransport | null
+  /** Mean request-to-first-byte time over requests that reported one. Null when the browser hid it. */
+  meanTtfbMs: number | null
+  /** Mean connection setup time over the requests that opened a connection (a reused one costs 0). Null when none did. */
+  meanConnectMs: number | null
+}
+
+/** The protocol seen most often among requests that reported one, `unknown` if none did, null with no requests. */
+export function dominantTransport(requests: readonly TelemetryEvent[]): ObservedTransport | null {
+  if (requests.length === 0) return null
+  const counts = new Map<ObservedTransport, number>()
+  for (const r of requests) {
+    const t = normaliseTransport(typeof r.data.transport === 'string' ? r.data.transport : undefined)
+    if (t !== 'unknown') counts.set(t, (counts.get(t) ?? 0) + 1)
+  }
+  let best: ObservedTransport | null = null
+  for (const [t, n] of counts) if (best === null || n > counts.get(best)!) best = t
+  return best ?? 'unknown'
 }
 
 /** Events of the slot's most recent load, from its `load-start` onward. */
@@ -75,6 +95,11 @@ export function summarize(events: readonly TelemetryEvent[], slot: number, now: 
     bytes += num(r.data.bytes) ?? 0
   }
 
+  const requests = ev.filter((e) => e.type === 'request')
+  const ttfb = requests.flatMap((r) => num(r.data.ttfbMs) ?? [])
+  const connects = requests.flatMap((r) => num(r.data.connectMs) ?? []).filter((c) => c > 0)
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : null)
+
   const lastSample = [...ev].reverse().find((e) => e.type === 'sample')
 
   return {
@@ -89,7 +114,56 @@ export function summarize(events: readonly TelemetryEvent[], slot: number, now: 
     meanSegmentLatencyMs: segments.length ? latency / segments.length : null,
     throughputKbps: latency > 0 ? (bytes * 8) / latency : null,
     liveLatencyS: lastSample ? num(lastSample.data.liveLatencyS) : null,
+    transport: dominantTransport(requests),
+    meanTtfbMs: mean(ttfb),
+    meanConnectMs: mean(connects),
   }
+}
+
+export interface TransportGroup {
+  delivery: string
+  transport: ObservedTransport
+  /** How many quadrants fall in the group. */
+  quadrants: number
+  startupMs: number | null
+  rebufferRatio: number | null
+  meanSegmentLatencyMs: number | null
+  throughputKbps: number | null
+  meanTtfbMs: number | null
+  meanConnectMs: number | null
+}
+
+/**
+ * Quadrants grouped by delivery and the protocol actually observed, with each metric averaged over
+ * the group's quadrants that have it. The grouping uses what was observed rather than what was asked
+ * for, so a fallback (h3 requested, h2 served) shows up under h2.
+ */
+export function summarizeByTransport(rows: readonly { delivery?: string; summary: Summary | null }[]): TransportGroup[] {
+  const groups = new Map<string, { delivery: string; transport: ObservedTransport; summaries: Summary[] }>()
+  for (const { delivery, summary } of rows) {
+    if (!summary?.transport) continue
+    const key = `${delivery ?? '?'}|${summary.transport}`
+    const g = groups.get(key) ?? { delivery: delivery ?? '?', transport: summary.transport, summaries: [] }
+    g.summaries.push(summary)
+    groups.set(key, g)
+  }
+  const mean = (xs: (number | null)[]) => {
+    const v = xs.filter((x): x is number => x !== null)
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
+  }
+  return [...groups.values()]
+    .map(({ delivery, transport, summaries: s }) => ({
+      delivery,
+      transport,
+      quadrants: s.length,
+      startupMs: mean(s.map((x) => x.startupMs)),
+      rebufferRatio: mean(s.map((x) => x.rebufferRatio)),
+      meanSegmentLatencyMs: mean(s.map((x) => x.meanSegmentLatencyMs)),
+      throughputKbps: mean(s.map((x) => x.throughputKbps)),
+      meanTtfbMs: mean(s.map((x) => x.meanTtfbMs)),
+      meanConnectMs: mean(s.map((x) => x.meanConnectMs)),
+    }))
+    .sort((a, b) => a.delivery.localeCompare(b.delivery) || a.transport.localeCompare(b.transport))
 }
 
 export function toJSON(events: readonly TelemetryEvent[]): string {
@@ -99,8 +173,10 @@ export function toJSON(events: readonly TelemetryEvent[]): string {
 const esc = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`
 
 export function toCSV(events: readonly TelemetryEvent[]): string {
+  // The observed protocol is only known for requests; other events leave the column empty.
+  const transport = (e: TelemetryEvent) => (e.type === 'request' && typeof e.data.transport === 'string' ? e.data.transport : '')
   const rows = events.map((e) =>
-    [e.t.toFixed(1), e.slot, e.streamId, e.delivery, e.type, esc(JSON.stringify(e.data))].join(','),
+    [e.t.toFixed(1), e.slot, e.streamId, e.delivery, transport(e), e.type, esc(JSON.stringify(e.data))].join(','),
   )
-  return ['t_ms,slot,stream,delivery,type,data', ...rows].join('\n')
+  return ['t_ms,slot,stream,delivery,transport,type,data', ...rows].join('\n')
 }

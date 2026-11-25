@@ -19,7 +19,8 @@ bitrate ${fmt(s.avgBitrateKbps, 0, ' kbps')} avg, ${last ? `${last.data.height ?
 buffer ${fmt((last?.data.bufferedAhead as number | undefined) ?? null, 1, ' s')}
 rebuffer ${s.rebufferCount}x ${fmt(s.rebufferMs / 1000, 1, ' s')} (${fmt(s.rebufferRatio * 100, 1, '%')})
 switches ${s.switches}  errors ${s.errors}
-segs ${s.requests} req, ${fmt(s.meanSegmentLatencyMs, 0, ' ms')}, ${fmt(s.throughputKbps, 0, ' kbps')}${
+segs ${s.requests} req, ${fmt(s.meanSegmentLatencyMs, 0, ' ms')}, ${fmt(s.throughputKbps, 0, ' kbps')}
+proto ${s.transport ?? '-'}, ttfb ${fmt(s.meanTtfbMs, 0, ' ms')}${
         s.liveLatencyS !== null ? `\nlive latency ${fmt(s.liveLatencyS, 1, ' s')}` : ''
       }`}
     </pre>

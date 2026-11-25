@@ -1,5 +1,5 @@
-/** The HTTP version a request was actually served over, as the browser reports it. */
-export type Transport = 'h1' | 'h2' | 'h3' | 'unknown'
+/** The HTTP version a request was actually served over, as the browser reports it. (The catalog's `Transport` is the one asked for.) */
+export type ObservedTransport = 'h1' | 'h2' | 'h3' | 'unknown'
 
 /** The slice of PerformanceResourceTiming this module reads. */
 export interface TimingEntry {
@@ -13,7 +13,7 @@ export interface TimingEntry {
 }
 
 export interface TransportTiming {
-  transport: Transport
+  transport: ObservedTransport
   /** Connection setup time; 0 when an existing connection was reused. Null when the browser hid the timings. */
   connectMs: number | null
   /** Request sent to first byte. Null when the browser hid the timings. */
@@ -26,7 +26,7 @@ const MATCH_WINDOW_MS = 5000
 const EPSILON_MS = 100
 
 /** Maps `nextHopProtocol` (`h2`, `h3`, `h3-29`, `http/1.1`, or `''` when hidden) to a transport. */
-export function normaliseTransport(nextHopProtocol: string | undefined): Transport {
+export function normaliseTransport(nextHopProtocol: string | undefined): ObservedTransport {
   const p = (nextHopProtocol ?? '').toLowerCase()
   if (p.startsWith('h3')) return 'h3'
   if (p === 'h2') return 'h2'

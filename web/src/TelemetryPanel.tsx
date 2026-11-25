@@ -6,6 +6,7 @@ import { buildRunPayload } from './history/run'
 import { SLOT_COUNT } from './state'
 import { toCSV, toJSON, summarize } from './telemetry/metrics'
 import { SummaryTable } from './telemetry/SummaryTable'
+import { TransportTable } from './telemetry/TransportTable'
 import { telemetry } from './telemetry/store'
 import { useTelemetryVersion } from './telemetry/useTelemetry'
 
@@ -82,6 +83,7 @@ export function TelemetryPanel() {
         </span>
       </div>
       <SummaryTable rows={rows} />
+      <TransportTable rows={rows} />
     </div>
   )
 }

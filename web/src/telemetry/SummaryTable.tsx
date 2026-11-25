@@ -18,7 +18,7 @@ export function SummaryTable({ rows }: { rows: readonly SummaryRowData[] }) {
     <table>
       <thead>
         <tr>
-          <th>slot</th><th>stream</th><th>delivery</th><th>startup ms</th><th>kbps avg</th>
+          <th>slot</th><th>stream</th><th>delivery</th><th>proto</th><th>startup ms</th><th>kbps avg</th>
           <th>rebuf</th><th>rebuf %</th><th>switches</th><th>seg ms</th><th>kbps net</th><th>err</th>
         </tr>
       </thead>
@@ -26,7 +26,7 @@ export function SummaryTable({ rows }: { rows: readonly SummaryRowData[] }) {
         {rows.map(({ slot, streamId, delivery, summary: s }) =>
           s ? (
             <tr key={slot}>
-              <td>{slot + 1}</td><td>{streamId}</td><td>{delivery}</td>
+              <td>{slot + 1}</td><td>{streamId}</td><td>{delivery}</td><td>{s.transport ?? '-'}</td>
               <td className={win('startupMs', slot)}>{f(s.startupMs)}</td>
               <td className={win('avgBitrateKbps', slot)}>{f(s.avgBitrateKbps)}</td>
               <td className={win('rebufferCount', slot)}>{s.rebufferCount}</td>
@@ -36,7 +36,7 @@ export function SummaryTable({ rows }: { rows: readonly SummaryRowData[] }) {
               <td className={win('errors', slot)}>{s.errors}</td>
             </tr>
           ) : (
-            <tr key={slot}><td>{slot + 1}</td><td colSpan={10}>idle</td></tr>
+            <tr key={slot}><td>{slot + 1}</td><td colSpan={11}>idle</td></tr>
           ),
         )}
       </tbody>

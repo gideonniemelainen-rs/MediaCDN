@@ -4,7 +4,8 @@ import type { Summary } from './metrics'
 
 const summary = (over: Partial<Summary>): Summary => ({
   startupMs: 500, rebufferCount: 0, rebufferMs: 0, rebufferRatio: 0, switches: 0, avgBitrateKbps: 2000,
-  errors: 0, requests: 10, meanSegmentLatencyMs: 80, throughputKbps: 8000, liveLatencyS: null, ...over,
+  errors: 0, requests: 10, meanSegmentLatencyMs: 80, throughputKbps: 8000, liveLatencyS: null,
+  transport: null, meanTtfbMs: null, meanConnectMs: null, ...over,
 })
 const row = (slot: number, streamId: string | undefined, over: Partial<Summary> = {}): CompareRow => ({ slot, streamId, summary: summary(over) })
 const slots = (s: Set<number>) => [...s].sort()
