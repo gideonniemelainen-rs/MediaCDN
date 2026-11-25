@@ -1,7 +1,7 @@
 #!/bin/sh
 # Spike: package one mezzanine with Shaka Packager and name the output like ffmpeg's DASH/HLS muxer
-# (media_N.m3u8, init-N.m4s, chunk-N-NNNNN.m4s) so web/src/catalog.ts, tools/live.mjs and
-# tools/smoke-origin.mjs keep working. Runs inside the worker image:
+# (media_N.m3u8, init-N.m4s, chunk-N-NNNNN.m4s) so the readers of the Title layout (shared/src/title-layout.ts) keep
+# working. A spike: it types those names itself, unlike package-shaka.sh, which is handed them. Runs inside the worker image:
 #   docker run --rm --entrypoint sh -v "$PWD/work:/app/work" -v "$PWD/spike:/spike:ro" \
 #     mediacdn-pipeline:dev /spike/shaka-spike.sh <jobKey>
 # Output: work/spike-shaka/ (copy it under origin/ to serve it).
