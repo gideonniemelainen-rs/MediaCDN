@@ -230,3 +230,20 @@ export function stagesFor(id: WorkflowId, params: Params): readonly StageDef[] {
 
 /** True when a validated run is the dry run of a gated workflow. */
 export const isDryRun = (id: WorkflowId, params: Params): boolean => WORKFLOWS[id].safety === 'dry-run-then-confirm' && !params.confirm
+
+// --- what the API serves ---------------------------------------------------------------------------------------------
+
+type JsonType = Exclude<ParamType, { kind: 'text' }> | { kind: 'text'; pattern: string; hint: string }
+export interface WorkflowInfo extends Omit<Workflow, 'params'> {
+  params: (Omit<Param, 'type'> & { type: JsonType | { kind: 'list'; item: JsonType; min: number; max: number } })[]
+  /** False for a workflow the server cannot run (a guide, or one this server has no implementation of). */
+  runnable: boolean
+}
+
+const jsonType = (t: ParamType): JsonType | { kind: 'list'; item: JsonType; min: number; max: number } =>
+  t.kind === 'list' ? { ...t, item: jsonType(t.item) as JsonType } : t.kind === 'text' ? { ...t, pattern: t.pattern.source } : t
+
+/** A workflow as JSON (a RegExp does not survive JSON.stringify), for `GET /workflows`. */
+export function describeWorkflow(wf: Workflow, runnable: boolean): WorkflowInfo {
+  return { ...wf, params: wf.params.map((p) => ({ ...p, type: jsonType(p.type) })), runnable: runnable && wf.kind === 'run' }
+}

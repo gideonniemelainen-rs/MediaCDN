@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { WORKFLOWS, WORKFLOW_IDS, isDryRun, isWorkflowId, stagesFor, validateParams } from './workflows.ts'
+import { WORKFLOWS, WORKFLOW_IDS, describeWorkflow, isDryRun, isWorkflowId, stagesFor, validateParams } from './workflows.ts'
 
 const ok = (id: Parameters<typeof validateParams>[0], input: unknown, defaults?: Parameters<typeof validateParams>[2]) => {
   const r = validateParams(id, input, defaults)
@@ -103,4 +103,17 @@ test('a gated workflow is a dry run until it confirms one', () => {
   assert.deepEqual(stagesFor('upload-s3', real).map((s) => s.id), ['upload', 'index'])
   assert.ok(!isDryRun('package-title', ok('package-title', { id: 'bbb' })), 'a safe workflow has no dry run')
   assert.deepEqual(stagesFor('package-title', { id: 'bbb' }).map((s) => s.id), ['probe', 'package', 'verify'])
+})
+
+test('a workflow described for the API survives JSON, with patterns as text', () => {
+  const info = describeWorkflow(WORKFLOWS['upload-s3'], true)
+  const back = JSON.parse(JSON.stringify(info))
+  assert.equal(back.runnable, true)
+  const slug = back.params.find((p: { key: string }) => p.key === 'slug')
+  assert.equal(slug.type.kind, 'text')
+  assert.ok(new RegExp(slug.type.pattern).test('bbb') && !new RegExp(slug.type.pattern).test('../x'))
+  const ids = JSON.parse(JSON.stringify(describeWorkflow(WORKFLOWS.bench, true))).params.find((p: { key: string }) => p.key === 'targets')
+  assert.equal(ids.type.kind, 'list')
+  assert.equal(describeWorkflow(WORKFLOWS['chrome-lab'], true).runnable, false, 'a guide is never runnable')
+  assert.equal(describeWorkflow(WORKFLOWS.bench, false).runnable, false, 'nor is one the server does not implement')
 })

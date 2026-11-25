@@ -8,6 +8,9 @@
 //   GET  /uploads, /uploads/:id   upload history from the database (needs `history`)
 //   GET  /settings          the settings overrides, their revisions and the highest revision (no session needed)
 //   PUT  /settings/:group, DELETE /settings/:group/:field   change settings (admin only; If-Match: <group revision>)
+//   GET  /workflows         the workflows (admin only, as is everything about runs)
+//   POST /workflows/:id/runs   start a run with validated parameters; a real S3 run needs `confirm`, a dry run's id (409 otherwise)
+//   GET  /runs, /runs/:id, /runs/:id/events, /runs/:id/files/:name.json   run history, one run, its live events, what it produced
 //   POST /benchmarks        save a benchmark run; GET /benchmarks, /benchmarks/:id,
 //                           /benchmarks/:id/artifacts/:kind; DELETE /benchmarks/:id (all yours; admin: all)
 // With `auth` given (always, outside tests) everything except /health, GET /settings and the login route needs a session.
@@ -15,15 +18,18 @@
 // origin, sends no CORS headers (a cross-site page cannot reach it) and binds to loopback.
 import { createHash, randomBytes } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { mkdir, rename, rm } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { isGroupName } from '../../shared/src/settings.ts'
+import { WORKFLOWS, WORKFLOW_IDS, describeWorkflow, isWorkflowId, validateParams } from '../../shared/src/workflows.ts'
 import { MIN_PASSWORD, clearCookie, createRateLimiter, newToken, sessionCookie, tokenFrom, verifyPassword } from './auth.mjs'
 import { parseRun } from './benchmarks.mjs'
 import { createJobManager, isTerminal, publicJob } from './jobs.mjs'
+import { createQueue } from './queue.mjs'
+import { createRunManager, publicRun } from './runs.mjs'
 import { slugify } from './job.mjs'
 import { STAGES } from './stages.mjs'
 import { outputIdFor } from './steps.mjs'
@@ -94,12 +100,20 @@ export function ifMatchRevision(header) {
  * `history` is `{ uploads, benchmarks }` (the repos from src/db). With it, every job state change is
  * recorded, and jobs already on disk are recorded once at startup.
  */
-export async function createPipelineServer({ work, origin, profile, steps, auth, history, settings, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
+export async function createPipelineServer({ work, origin, profile, steps, auth, history, settings, workflows, s3Bucket, allowedOrigins = DEFAULT_ORIGINS, now = Date.now }) {
   const limiter = auth?.limiter ?? createRateLimiter()
-  const manager = await createJobManager({ work, steps, now, onChange: history && ((job) => history.uploads.upsert(job)) })
+  // One queue for uploads and workflow runs: ffmpeg is heavy and a benchmark measures the network, so they take turns.
+  const queue = createQueue()
+  const manager = await createJobManager({ work, steps, now, queue, onChange: history && ((job) => history.uploads.upsert(job)) })
+  const runs = workflows && (await createRunManager({ work, workflows, queue, now, onChange: history?.runs && ((job) => history.runs.upsert(job)) }))
   if (history) {
     for (const job of manager.all()) {
       await history.uploads.upsert(job).catch((e) => console.error(`history: could not record job ${job.id}: ${e.message}`))
+    }
+    if (history.runs && runs) {
+      for (const job of runs.all()) {
+        await history.runs.upsert(job).catch((e) => console.error(`history: could not record run ${job.id}: ${e.message}`))
+      }
     }
   }
   const maxBytes = profile.limits.maxFileBytes
@@ -248,7 +262,7 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
     return json(res, 405, { error: 'method not allowed' })
   }
 
-  function handleEvents(req, res, job) {
+  function handleEvents(req, res, job, mgr = manager, view = publicJob) {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -256,21 +270,73 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
       'X-Accel-Buffering': 'no',
     })
     const send = (j) => {
-      res.write(`data: ${JSON.stringify(publicJob(j))}\n\n`)
+      res.write(`data: ${JSON.stringify(view(j))}\n\n`)
       if (isTerminal(j)) {
         res.write('event: done\ndata: {}\n\n')
         cleanup()
         res.end()
       }
     }
-    const unsubscribe = manager.subscribe(job.id, send)
+    const unsubscribe = mgr.subscribe(job.id, send)
     const ping = setInterval(() => res.write(': ping\n\n'), 15000)
     const cleanup = () => {
       clearInterval(ping)
       unsubscribe()
     }
     req.on('close', cleanup)
-    send(manager.get(job.id))
+    send(mgr.get(job.id))
+  }
+
+  /**
+   * Workflows and runs. Running a task on this machine is at least as sensitive as changing settings, so all of it is admin
+   * only (whenever there is auth). A run is another person's business only if you are an admin, so there is no per-run owner check.
+   */
+  async function handleWorkflows(req, res, path, url, user) {
+    if (!runs) return json(res, 404, { error: 'not found' })
+    if (auth && user?.role !== 'admin') return json(res, 403, { error: 'admin only' })
+    const notFound = () => json(res, 404, { error: 'not found' })
+    const wrongMethod = () => json(res, 405, { error: 'method not allowed' })
+
+    if (path === '/workflows') {
+      if (req.method !== 'GET') return wrongMethod()
+      const list = WORKFLOW_IDS.map((id) => describeWorkflow(WORKFLOWS[id], Boolean(workflows[id])))
+      return json(res, 200, { workflows: list, defaults: { bucket: s3Bucket ?? null } })
+    }
+    let m = /^\/workflows\/([a-z0-9-]{1,40})\/runs$/.exec(path)
+    if (m) {
+      if (req.method !== 'POST') return wrongMethod()
+      if (!isWorkflowId(m[1])) return notFound()
+      const checked = validateParams(m[1], await readJson(req, 16384), s3Bucket ? { bucket: s3Bucket } : {})
+      if (!checked.ok) return json(res, 400, { error: 'invalid parameters', errors: checked.errors })
+      try {
+        const job = runs.start({ workflow: m[1], params: checked.params, userId: user?.id ?? null })
+        return json(res, 201, publicRun(job))
+      } catch (e) {
+        if (e.status) return json(res, e.status, { error: e.message })
+        throw e
+      }
+    }
+    if (path === '/runs') {
+      if (req.method !== 'GET') return wrongMethod()
+      if (history?.runs) {
+        const page = await history.runs.list(user ?? { role: 'admin' }, { before: url.searchParams.get('before'), limit: url.searchParams.get('limit'), workflow: url.searchParams.get('workflow') ?? undefined })
+        return json(res, 200, page)
+      }
+      return json(res, 200, { runs: runs.list(), next: null })
+    }
+    m = /^\/runs\/([0-9a-f]{8})(?:\/(events)|\/files\/([a-z0-9-]{1,40}\.json))?$/.exec(path)
+    const run = m && runs.get(m[1])
+    if (!run) return notFound()
+    if (req.method !== 'GET') return wrongMethod()
+    if (m[2]) return handleEvents(req, res, run, runs, publicRun)
+    if (m[3]) {
+      // Only what a run itself wrote into its own directory, by a name that cannot leave it.
+      const text = await readFile(join(work, 'runs', run.id, m[3]), 'utf8').catch(() => null)
+      if (text === null) return notFound()
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+      return res.end(text)
+    }
+    return json(res, 200, publicRun(run))
   }
 
   const server = createServer(async (req, res) => {
@@ -308,6 +374,7 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
       }
 
       if (settings && (path === '/settings' || path.startsWith('/settings/'))) return await handleSettings(req, res, path, user)
+      if (path === '/workflows' || path.startsWith('/workflows/') || path === '/runs' || path.startsWith('/runs/')) return await handleWorkflows(req, res, path, url, user)
       if (path === '/benchmarks' || path.startsWith('/benchmarks/')) return await handleBenchmarks(req, res, path, url, user)
       if (req.method === 'POST' && path === '/uploads') return await handleUpload(req, res, user)
       if (req.method !== 'GET') return json(res, 405, { error: 'method not allowed' })
@@ -328,5 +395,5 @@ export async function createPipelineServer({ work, origin, profile, steps, auth,
     }
   })
 
-  return { server, manager }
+  return { server, manager, runs }
 }

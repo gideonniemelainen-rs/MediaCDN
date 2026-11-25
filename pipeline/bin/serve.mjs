@@ -3,6 +3,7 @@
 // normalise, package, verify and publish, and streams job progress to the /upload/ page.
 // usage: node pipeline/bin/serve.mjs [--port 8790] [--work dir] [--origin dir]
 // env:   PIPELINE_ALLOWED_ORIGINS=http://localhost:5173,...  (browser origins allowed to call it)
+//        S3_BUCKET=<bucket>  (the default bucket of the S3 workflows; the AWS profile comes from the host)
 //        DATABASE_URL=postgres://...  (default: the compose db; start it with docker compose -f pipeline/compose.yaml up -d db)
 import { readFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
@@ -10,12 +11,14 @@ import { fileURLToPath } from 'node:url'
 import { checkDb, createPool } from '../src/db/pool.mjs'
 import { migrate } from '../src/db/migrate.mjs'
 import { createBenchmarks } from '../src/db/benchmarks.mjs'
+import { createRuns } from '../src/db/runs.mjs'
 import { createSettings } from '../src/db/settings.mjs'
 import { createUploads } from '../src/db/uploads.mjs'
 import { createSessions } from '../src/db/sessions.mjs'
 import { createUsers, seedAdmin } from '../src/db/users.mjs'
 import { DEFAULT_ORIGINS, createPipelineServer } from '../src/server.mjs'
 import { createSteps } from '../src/steps.mjs'
+import { createWorkflows } from '../src/workflows/index.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const opts = { port: 8790, work: join(root, 'work'), origin: resolve(root, '../origin') }
@@ -47,10 +50,11 @@ const auth = { users, sessions, dbStatus: () => checkDb(pool) }
 const history = {
   benchmarks: createBenchmarks(pool),
   uploads: createUploads(pool, { fallbackUserId: async () => (await users.findByName('admin'))?.id ?? null }),
+  runs: createRuns(pool),
 }
 const settings = createSettings(pool)
 const steps = createSteps({ profile, work: opts.work, origin: opts.origin, getPackaging: async () => (await settings.all()).overrides.packaging })
-const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, settings, allowedOrigins })
+const { server } = await createPipelineServer({ work: opts.work, origin: opts.origin, profile, steps, auth, history, settings, workflows: createWorkflows(), s3Bucket: process.env.S3_BUCKET, allowedOrigins })
 
 server.listen(opts.port, '127.0.0.1', () => {
   console.log(`pipeline on http://127.0.0.1:${opts.port}/api/pipeline  (work ${opts.work}, origin ${opts.origin})`)
