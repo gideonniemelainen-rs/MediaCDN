@@ -1,0 +1,38 @@
+# Local transport lab: the same origin (tools/serve-origin.mjs, :8788) behind three TLS listeners,
+# each allowing a different set of HTTP versions. Run from the repo root:
+#   caddy run --config infra/local/Caddyfile --adapter caddyfile
+# Certificates come from tools/lab-certs.sh. See infra/local/README.md.
+{
+	admin off
+	auto_https off
+
+	# One server per listener, so each can allow its own protocols.
+	# h3 listens on UDP at the same port number and Caddy adds Alt-Svc on its own.
+	servers :8441 {
+		protocols h1
+	}
+	servers :8442 {
+		protocols h1 h2
+	}
+	servers :8443 {
+		protocols h1 h2 h3
+	}
+}
+
+(origin) {
+	tls infra/local/localhost.pem infra/local/localhost-key.pem
+	# The origin already sends CORS, Timing-Allow-Origin, ranges and cache headers; Caddy passes them through.
+	reverse_proxy localhost:8788
+}
+
+https://localhost:8441 {
+	import origin
+}
+
+https://localhost:8442 {
+	import origin
+}
+
+https://localhost:8443 {
+	import origin
+}
