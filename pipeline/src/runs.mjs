@@ -20,6 +20,21 @@ export class UnknownWorkflow extends Error {
   }
 }
 
+/** A start that the rules refuse (409): the reason is meant to be shown to the person who asked. */
+export class RunRefused extends Error {
+  constructor(message) {
+    super(message)
+    this.status = 409
+  }
+}
+
+export const CONFIRM_WINDOW_MS = 15 * 60 * 1000
+
+const sameParams = (a, b) => {
+  const strip = ({ confirm: _c, ...rest }) => JSON.stringify(Object.entries(rest).sort(([x], [y]) => (x < y ? -1 : 1)))
+  return strip(a) === strip(b)
+}
+
 export function summariseRun(job) {
   return { id: job.id, workflow: job.meta.workflow, name: job.meta.name, status: job.status, createdAt: job.createdAt, dryRun: job.meta.dryRun, params: job.meta.params }
 }
@@ -34,9 +49,30 @@ export const publicRun = (job) => {
  * `onChange(job)` is as for the job manager (history). `queue` is shared with the upload jobs. Each run gets a directory,
  * `<work>/runs/<id>/`, as `ctx.dir`, for what it produces (a benchmark report).
  */
-export async function createRunManager({ work, workflows, queue = createQueue(), now = Date.now, onChange, newId = () => randomBytes(4).toString('hex') }) {
+export async function createRunManager({ work, workflows, queue = createQueue(), now = Date.now, onChange, confirmWindowMs = CONFIRM_WINDOW_MS, newId = () => randomBytes(4).toString('hex') }) {
   const dir = join(work, 'runs')
   const store = await createJobStore({ dir, now, onChange })
+
+  /**
+   * The gate on a real run of a dry-run-then-confirm workflow: `confirm` must name a successful dry run of the same
+   * workflow with the same parameters, started by the same user, that ended within the window and has not been used. This
+   * is the rule, not the page: a call that skips the dry run is refused here. Using a dry run, even by a run that then
+   * fails, spends it, and the record of that is the run's own `confirm` param, so a restart does not forget it.
+   */
+  function checkConfirm(workflow, params, userId) {
+    const dry = store.get(params.confirm)
+    const refuse = (why) => {
+      throw new RunRefused(`cannot confirm ${params.confirm}: ${why}`)
+    }
+    if (!dry || dry.meta.workflow !== workflow) refuse('no such dry run of this workflow')
+    if (!dry.meta.dryRun) refuse('that run was not a dry run')
+    if (dry.status !== 'success') refuse(`the dry run ${dry.status === 'failed' ? 'failed' : 'has not finished'}`)
+    if ((dry.meta.userId ?? null) !== (userId ?? null)) refuse('the dry run was started by someone else')
+    if (!sameParams(dry.meta.params, params)) refuse('the parameters differ from the dry run, so run the dry run again')
+    const endedAt = Math.max(dry.createdAt, ...dry.stages.map((s) => s.endedAt ?? 0))
+    if (now() - endedAt > confirmWindowMs) refuse(`the dry run is more than ${Math.round(confirmWindowMs / 60000)} minutes old, so run it again`)
+    if (store.all().some((j) => j.id !== dry.id && j.meta.workflow === workflow && j.meta.params?.confirm === dry.id)) refuse('it was already used')
+  }
 
   return {
     get: store.get,
@@ -47,6 +83,7 @@ export async function createRunManager({ work, workflows, queue = createQueue(),
     /** Queues a run of `workflow` with parameters the caller has already validated against the registry. */
     start({ workflow, params, userId = null }) {
       if (!isWorkflowId(workflow) || WORKFLOWS[workflow].kind !== 'run' || !workflows[workflow]) throw new UnknownWorkflow(workflow)
+      if (params.confirm !== undefined) checkConfirm(workflow, params, userId)
       const id = newId()
       const dryRun = isDryRun(workflow, params)
       const meta = { workflow, name: WORKFLOWS[workflow].label, params, dryRun, userId }

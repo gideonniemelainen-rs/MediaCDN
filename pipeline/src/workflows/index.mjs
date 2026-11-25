@@ -22,11 +22,19 @@ const exists = (p) => stat(p).then(() => true, () => false)
  * @param {string} [o.mediaDir]   where source files are (default <root>/media/src)
  * @param {string} [o.originDir]  where Titles are (default <root>/origin)
  * @param {Record<string, string>} [o.env]  extra environment for the child processes
+ * @param {Record<string, string|undefined>} [o.hostEnv]  where the S3 workflows find the host's AWS profile settings
  */
-export function createWorkflows({ root = REPO, mediaDir = join(root, 'media/src'), originDir = join(root, 'origin'), env = {}, bench = runBench } = {}) {
+export function createWorkflows({ root = REPO, mediaDir = join(root, 'media/src'), originDir = join(root, 'origin'), env = {}, bench = runBench, hostEnv = process.env } = {}) {
   const node = process.execPath
   const script = (...parts) => join(root, ...parts)
   const run = (file, args, h, extra = {}) => spawnStage({ cmd: node, args: [script(file), ...args], cwd: root, env: { ...env, ...extra }, h })
+
+  // What the S3 workflows hand the AWS CLI: the bucket, and where the host's profile lives (HOME and the config file
+  // locations, so the profile in ~/.aws resolves). Never an access key: credentials come from the profile, not from here.
+  const PROFILE_VARS = ['HOME', 'AWS_PROFILE', 'AWS_CONFIG_FILE', 'AWS_SHARED_CREDENTIALS_FILE', 'AWS_REGION', 'AWS_DEFAULT_REGION']
+  const awsEnv = (bucket) => ({ ...Object.fromEntries(PROFILE_VARS.filter((k) => hostEnv[k]).map((k) => [k, hostEnv[k]])), S3_BUCKET: bucket })
+  const bash = (file, args, h, extra) => spawnStage({ cmd: 'bash', args: [script(file), ...args], cwd: root, env: { ...env, ...extra }, h })
+  const counted = (lines) => lines.filter((l) => /^(\(dryrun\) )?upload:/.test(l)).length
 
   return {
     'probe-sources': {
@@ -131,6 +139,55 @@ export function createWorkflows({ root = REPO, mediaDir = join(root, 'media/src'
           return { summary: 'report.json', result: { file: 'report.json', bytes: text.length } }
         },
       }),
+    },
+
+    // The two S3 workflows are gated: without `confirm` they only look (the dry run), and a real run needs the id of a
+    // successful dry run (the run manager checks it). The steps below are chosen by `dryRun`, so the dry run's steps cannot
+    // pass --go however they are called.
+    'upload-s3': {
+      steps: ({ params, dryRun }) => {
+        const e = awsEnv(params.bucket)
+        if (dryRun) {
+          return {
+            async 'dry-run'(_ctx, h) {
+              const { lines } = await bash('scripts/upload-s3.sh', [params.slug], h, e)
+              const size = lines.find((l) => l.startsWith('size:'))?.slice(5).trim()
+              return { summary: `would upload ${counted(lines)} files${size ? ` (${size})` : ''} to s3://${params.bucket}/media/${params.slug}/`, result: { files: counted(lines), size: size ?? null } }
+            },
+          }
+        }
+        return {
+          async upload(_ctx, h) {
+            const { lines } = await bash('scripts/upload-s3.sh', [params.slug, '--go', '--no-index'], h, e)
+            return { summary: `uploaded ${counted(lines)} files to s3://${params.bucket}/media/${params.slug}/` }
+          },
+          async index(_ctx, h) {
+            const { lines } = await run('tools/s3-index.mjs', ['--go'], h, e)
+            return { summary: lastLine(lines, 'index uploaded') }
+          },
+        }
+      },
+    },
+
+    'rebuild-s3-index': {
+      steps: ({ params, dryRun }) => {
+        const e = awsEnv(params.bucket)
+        if (dryRun) {
+          return {
+            async 'dry-run'(_ctx, h) {
+              const { lines } = await run('tools/s3-index.mjs', [], h, e)
+              const titles = lines.filter((l) => /^\s+"id":/.test(l)).length
+              return { summary: `would list ${titles} titles in s3://${params.bucket}/media/index.json`, result: { titles } }
+            },
+          }
+        }
+        return {
+          async index(_ctx, h) {
+            const { lines } = await run('tools/s3-index.mjs', ['--go'], h, e)
+            return { summary: lastLine(lines, 'index uploaded') }
+          },
+        }
+      },
     },
   }
 }

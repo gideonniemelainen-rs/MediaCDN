@@ -4,12 +4,15 @@
 # Dry run unless --go is given. Segments go first and manifests last, so a manifest never
 # references objects that are not there yet. No --delete: the uploader policy has no DeleteObject.
 #
-# Usage: S3_BUCKET=<bucket> scripts/upload-s3.sh <slug> [--go]
+# Usage: S3_BUCKET=<bucket> scripts/upload-s3.sh <slug> [--go] [--no-index]
+#   --no-index skips step 3, for a caller that rebuilds the index as its own step (the upload-s3 workflow).
 #   AWS_PROFILE defaults to mediacdn-uploader; MANIFEST_CACHE overrides the manifest Cache-Control.
 set -euo pipefail
 
-slug=${1:?usage: S3_BUCKET=<bucket> $0 <slug> [--go]}
+slug=${1:?usage: S3_BUCKET=<bucket> $0 <slug> [--go] [--no-index]}
 go=${2:-}
+index=1
+[[ ${3:-} == --no-index ]] && index=0
 : "${S3_BUCKET:?set S3_BUCKET}"
 export AWS_PROFILE=${AWS_PROFILE:-mediacdn-uploader}
 [[ $slug =~ ^[a-z0-9][a-z0-9-]*$ ]] || { echo "bad slug: $slug" >&2; exit 2; }
@@ -41,7 +44,9 @@ aws s3 sync "$src" "$dest" ${dry[@]+"${dry[@]}"} \
   --content-type application/dash+xml --cache-control "$manifest_cache"
 
 # 3. Refresh the title index the app reads (lists what is really in the bucket).
-if [[ $go == --go ]]; then
+if [[ $index == 0 ]]; then
+  echo "(index not rebuilt: --no-index)"
+elif [[ $go == --go ]]; then
   node "$root/tools/s3-index.mjs" --go
 else
   echo "(dry run: index.json would be rebuilt from the bucket contents)"

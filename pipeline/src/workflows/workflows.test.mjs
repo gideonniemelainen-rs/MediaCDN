@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before, test } from 'node:test'
@@ -196,4 +196,107 @@ test('package a title: a packager that fails leaves the existing title in place 
   assert.match(job.stages[1].summary, /ffmpeg exploded/)
   assert.equal(readFileSync(join(originDir, 'demo/keep.txt'), 'utf8'), 'keep me')
   assert.deepEqual(readdirSync(originDir).filter((f) => f.startsWith('.tmp')), [])
+})
+
+// --- the S3 workflows, against a fake `aws` ------------------------------------------------------------------------
+
+
+const REPO_ROOT = join(import.meta.dirname, '../../..')
+
+const FAKE_AWS = `#!/usr/bin/env node
+const { appendFileSync, readdirSync } = require('node:fs')
+const a = process.argv.slice(2)
+appendFileSync(process.env.AWS_LOG, JSON.stringify({ args: a, profile: process.env.AWS_PROFILE ?? null, home: process.env.HOME ?? null, config: process.env.AWS_CONFIG_FILE ?? null, hasKey: 'AWS_ACCESS_KEY_ID' in process.env || 'AWS_SECRET_ACCESS_KEY' in process.env, hasDb: 'DATABASE_URL' in process.env }) + '\\n')
+if (process.env.AWS_FAIL) { console.error('An error occurred (AccessDenied): not allowed'); process.exit(255) }
+if (a[0] === 's3' && a[1] === 'sync') {
+  const [src, dest] = [a[2], a[3]]
+  const inc = a[a.indexOf('--include') + 1].replace('*', '')
+  for (const f of readdirSync(src).filter((n) => n.endsWith(inc))) console.log((a.includes('--dryrun') ? '(dryrun) ' : '') + 'upload: ' + src + '/' + f + ' to ' + dest + '/' + f)
+} else if (a[0] === 's3api') {
+  const prefix = a[a.indexOf('--prefix') + 1]
+  console.log(JSON.stringify(prefix === 'media/' ? { CommonPrefixes: [{ Prefix: 'media/bbb/' }] } : { Contents: [{ Key: prefix }] }))
+} else if (a[0] === 's3' && a[1] === 'cp') console.log('upload: ' + a[2] + ' to ' + a[3])
+`
+
+function s3Setup(over = {}) {
+  const root = fresh('s3root')
+  for (const f of ['scripts/upload-s3.sh', 'tools/s3-index.mjs']) {
+    mkdirSync(join(root, f, '..'), { recursive: true })
+    copyFileSync(join(REPO_ROOT, f), join(root, f))
+  }
+  symlinkSync(join(REPO_ROOT, 'shared'), join(root, 'shared'))
+  for (const f of ['master.m3u8', 'manifest.mpd', 'init-0.m4s', 'chunk-0-00001.m4s', 'chunk-0-00002.m4s']) put(root, `origin/bbb/${f}`, 'x')
+  const bin = fresh('bin')
+  writeFileSync(join(bin, 'aws'), FAKE_AWS)
+  chmodSync(join(bin, 'aws'), 0o755)
+  const log = join(bin, 'calls.jsonl')
+  const calls = () => (existsSync(log) ? readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map((l) => JSON.parse(l)) : [])
+  const hostEnv = { HOME: '/home/someone', AWS_CONFIG_FILE: '/home/someone/.aws/config', AWS_ACCESS_KEY_ID: 'AKIA-MUST-NOT-LEAK', AWS_SECRET_ACCESS_KEY: 'nope', DATABASE_URL: 'postgres://secret', ...over.hostEnv }
+  const workflows = createWorkflows({ root, hostEnv, env: { PATH: `${bin}:${process.env.PATH}`, AWS_LOG: log, ...over.env } })
+  return { workflows, calls }
+}
+
+/** Runs a workflow's dry run, then (when asked) the confirmed run, through a real run manager. */
+async function twoStep(workflows, workflow, params, { confirm = true } = {}) {
+  const m = await mk(workflows)
+  const v = validateParams(workflow, params)
+  assert.ok(v.ok, JSON.stringify(v))
+  const dry = m.start({ workflow, params: v.params, userId: 'u' })
+  await m.idle()
+  if (!confirm) return { m, dry: m.get(dry.id) }
+  const real = m.start({ workflow, params: { ...v.params, confirm: dry.id }, userId: 'u' })
+  await m.idle()
+  return { m, dry: m.get(dry.id), real: m.get(real.id) }
+}
+const syncs = (calls) => calls.filter((c) => c.args[0] === 's3' && c.args[1] === 'sync')
+
+test('upload to S3, dry run: it only looks, and the AWS CLI sees the bucket, the profile and nothing it should not', async () => {
+  const { workflows, calls } = s3Setup()
+  const { dry } = await twoStep(workflows, 'upload-s3', { slug: 'bbb', bucket: 'my-bucket' }, { confirm: false })
+  assert.equal(dry.status, 'success', JSON.stringify(dry.stages))
+  assert.deepEqual(dry.stages.map((s) => s.id), ['dry-run'])
+  assert.match(dry.stages[0].summary, /would upload 5 files .* to s3:\/\/my-bucket\/media\/bbb\//)
+  const c = calls()
+  assert.ok(syncs(c).length === 3 && syncs(c).every((x) => x.args.includes('--dryrun')), 'every sync is a --dryrun')
+  assert.ok(!c.some((x) => x.args[1] === 'cp'), 'no index upload on a dry run')
+  assert.ok(c.every((x) => x.profile === 'mediacdn-uploader' && x.home === '/home/someone' && x.config === '/home/someone/.aws/config'))
+  assert.ok(c.every((x) => !x.hasKey && !x.hasDb), 'no access keys and no server secrets reach the AWS CLI')
+  assert.ok(syncs(c).every((x) => x.args[3] === 's3://my-bucket/media/bbb'), 'the destination is the bucket and slug asked for')
+})
+
+test('upload to S3, confirmed: segments, then manifests, then the index, and a real (not dry) sync', async () => {
+  const { workflows, calls } = s3Setup()
+  const { real } = await twoStep(workflows, 'upload-s3', { slug: 'bbb', bucket: 'my-bucket' })
+  assert.equal(real.status, 'success', JSON.stringify(real.stages))
+  assert.deepEqual(stages(real), { upload: 'success', index: 'success' })
+  assert.match(real.stages[0].summary, /uploaded 5 files/)
+  const c = calls().filter((x) => x.args.includes('sync') || x.args.includes('cp'))
+  const real_ = c.filter((x) => !x.args.includes('--dryrun'))
+  assert.deepEqual(real_.map((x) => x.args.includes('sync') ? x.args[x.args.indexOf('--include') + 1] : 'cp'), ['*.m4s', '*.m3u8', '*.mpd', 'cp'])
+  const cp = c.find((x) => x.args[1] === 'cp')
+  assert.ok(cp.args.includes('s3://my-bucket/media/index.json'))
+})
+
+test('rebuild the S3 index: the dry run lists, the confirmed run writes', async () => {
+  const { workflows, calls } = s3Setup()
+  const { dry, real } = await twoStep(workflows, 'rebuild-s3-index', { bucket: 'my-bucket' })
+  assert.match(dry.stages[0].summary, /would list 1 titles/)
+  assert.equal(real.status, 'success', JSON.stringify(real.stages))
+  const cps = calls().filter((x) => x.args[1] === 'cp')
+  assert.equal(cps.length, 1, 'only the confirmed run writes')
+})
+
+test('an AWS failure fails the stage with what the CLI said, and nothing after it runs', async () => {
+  const { workflows } = s3Setup({ env: { AWS_FAIL: '1' } })
+  const { dry } = await twoStep(workflows, 'upload-s3', { slug: 'bbb', bucket: 'my-bucket' }, { confirm: false })
+  assert.equal(dry.status, 'failed')
+  assert.match(dry.stages[0].summary, /AccessDenied/)
+})
+
+test('the dry run of a gated workflow cannot be made to upload, whatever the parameters', async () => {
+  const { workflows } = s3Setup()
+  for (const id of ['upload-s3', 'rebuild-s3-index']) {
+    const steps = workflows[id].steps({ params: { slug: 'bbb', bucket: 'b' }, dryRun: true })
+    assert.deepEqual(Object.keys(steps), ['dry-run'], `${id}: a dry run has only its dry-run step`)
+  }
 })

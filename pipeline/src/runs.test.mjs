@@ -6,7 +6,7 @@ import { after, before, test } from 'node:test'
 import { createJobManager } from './jobs.mjs'
 import { createQueue } from './queue.mjs'
 import { StageError } from './run.mjs'
-import { UnknownWorkflow, createRunManager, publicRun } from './runs.mjs'
+import { RunRefused, UnknownWorkflow, createRunManager, publicRun } from './runs.mjs'
 
 let work
 before(() => (work = mkdtempSync(join(tmpdir(), 'runs-'))))
@@ -67,6 +67,7 @@ test('a gated workflow without confirm is the dry run, with its own stages', asy
   const dry = m.start({ workflow: 'upload-s3', params: { slug: 'bbb', bucket: 'my-bucket' } })
   assert.deepEqual(dry.stages.map((s) => s.id), ['dry-run'])
   assert.equal(dry.meta.dryRun, true)
+  await m.idle()
   const real = m.start({ workflow: 'upload-s3', params: { slug: 'bbb', bucket: 'my-bucket', confirm: dry.id } })
   assert.deepEqual(real.stages.map((s) => s.id), ['upload', 'index'])
   assert.equal(real.meta.dryRun, false)
@@ -133,4 +134,130 @@ test('state changes reach onChange in order, once per change of state', async ()
   assert.equal(seen[0], 'queued:queued,queued')
   assert.equal(seen.at(-1), 'success:success,success')
   assert.equal(new Set(seen).size, seen.length, 'progress ticks are not recorded')
+})
+
+// --- the confirm gate ---------------------------------------------------------------------------------------------
+
+const MIN = 60_000
+const s3 = { steps: ({ dryRun }) => (dryRun ? { 'dry-run': ok('listed') } : { upload: ok('up'), index: ok('idx') }) }
+const P = { slug: 'bbb', bucket: 'my-bucket' }
+const refused = (m) => (e) => e instanceof RunRefused && e.status === 409 && m.test(e.message)
+
+async function gated(over = {}) {
+  let t = 1_000_000
+  const m = await createRunManager({ work: over.work ?? dirOf('gate'), workflows: { 'upload-s3': s3, 'rebuild-s3-index': s3, bench }, now: () => t, newId: ids })
+  const dry = (userId = 'u1', params = P, workflow = 'upload-s3') => m.start({ workflow, params, userId })
+  return { m, dry, advance: (ms) => (t += ms), confirm: (id, over2 = {}) => m.start({ workflow: 'upload-s3', params: { ...P, confirm: id }, userId: 'u1', ...over2 }) }
+}
+
+test('a real run is accepted with the id of a successful dry run of the same parameters', async () => {
+  const { m, dry, confirm } = await gated()
+  const d = dry()
+  await m.idle()
+  const real = confirm(d.id)
+  assert.equal(real.meta.dryRun, false)
+  assert.deepEqual(real.stages.map((s) => s.id), ['upload', 'index'])
+  await m.idle()
+  assert.equal(m.get(real.id).status, 'success')
+})
+
+test('without a dry run there is nothing to upload: an unknown id, a missing one and a safe workflow all refuse', async () => {
+  const { m, confirm } = await gated()
+  assert.throws(() => confirm('deadbeef'), refused(/no such dry run/))
+  assert.throws(() => m.start({ workflow: 'upload-s3', params: { ...P, confirm: '../x' }, userId: 'u1' }), refused(/no such dry run/))
+  assert.equal(m.list().length, 0, 'a refused start creates no run')
+})
+
+test('a dry run that has not finished, or failed, cannot be confirmed', async () => {
+  const failing = { steps: () => ({ 'dry-run': async () => { throw new StageError('E_X', 'aws said no') } }) }
+  let release
+  const slow = { steps: () => ({ 'dry-run': () => new Promise((r) => (release = r)) }) }
+  const m1 = await createRunManager({ work: dirOf('g1'), workflows: { 'upload-s3': failing }, newId: ids })
+  const bad = m1.start({ workflow: 'upload-s3', params: P, userId: 'u1' })
+  await m1.idle()
+  assert.throws(() => m1.start({ workflow: 'upload-s3', params: { ...P, confirm: bad.id }, userId: 'u1' }), refused(/failed/))
+  const m2 = await createRunManager({ work: dirOf('g2'), workflows: { 'upload-s3': slow }, newId: ids })
+  const pending = m2.start({ workflow: 'upload-s3', params: P, userId: 'u1' })
+  assert.throws(() => m2.start({ workflow: 'upload-s3', params: { ...P, confirm: pending.id }, userId: 'u1' }), refused(/not finished/))
+  while (!release) await new Promise((r) => setTimeout(r, 5)) // the run has started
+  release()
+  await m2.idle()
+})
+
+test('a real run is not a dry run, and a dry run of another workflow does not count', async () => {
+  const { m, dry, confirm } = await gated()
+  const d = dry()
+  await m.idle()
+  const real = confirm(d.id)
+  await m.idle()
+  assert.throws(() => confirm(real.id), refused(/not a dry run/))
+  const other = dry('u1', { bucket: 'my-bucket' }, 'rebuild-s3-index')
+  await m.idle()
+  assert.throws(() => confirm(other.id), refused(/no such dry run of this workflow/))
+})
+
+test('only the person who ran the dry run can confirm it', async () => {
+  const { m, dry, confirm } = await gated()
+  const d = dry('u1')
+  await m.idle()
+  assert.throws(() => confirm(d.id, { userId: 'u2' }), refused(/someone else/))
+  assert.throws(() => confirm(d.id, { userId: null }), refused(/someone else/))
+  assert.doesNotThrow(() => confirm(d.id))
+})
+
+test('changed parameters mean another dry run', async () => {
+  const { m, dry, confirm } = await gated()
+  const d = dry()
+  await m.idle()
+  assert.throws(() => m.start({ workflow: 'upload-s3', params: { slug: 'sintel', bucket: 'my-bucket', confirm: d.id }, userId: 'u1' }), refused(/differ/))
+  assert.throws(() => m.start({ workflow: 'upload-s3', params: { slug: 'bbb', bucket: 'other-bucket', confirm: d.id }, userId: 'u1' }), refused(/differ/))
+  assert.doesNotThrow(() => confirm(d.id))
+})
+
+test('a dry run goes stale after 15 minutes', async () => {
+  const { m, dry, confirm, advance } = await gated()
+  const d = dry()
+  await m.idle()
+  advance(15 * MIN - 1)
+  const edge = confirm(d.id) // just inside the window
+  await m.idle()
+  const { m: m2, dry: dry2, confirm: confirm2, advance: advance2 } = await gated()
+  const d2 = dry2()
+  await m2.idle()
+  advance2(15 * MIN + 1)
+  assert.throws(() => confirm2(d2.id), refused(/15 minutes old/))
+  assert.ok(edge)
+})
+
+test('a dry run is single use, even if the run that used it failed, and a refusal does not spend it', async () => {
+  const failing = { steps: ({ dryRun }) => (dryRun ? { 'dry-run': ok('listed') } : { upload: async () => { throw new StageError('E_X', 'broke') }, index: ok('') }) }
+  const m = await createRunManager({ work: dirOf('single'), workflows: { 'upload-s3': failing }, newId: ids })
+  const d = m.start({ workflow: 'upload-s3', params: P, userId: 'u1' })
+  await m.idle()
+  assert.throws(() => m.start({ workflow: 'upload-s3', params: { slug: 'x', bucket: 'my-bucket', confirm: d.id }, userId: 'u1' }), refused(/differ/))
+  const real = m.start({ workflow: 'upload-s3', params: { ...P, confirm: d.id }, userId: 'u1' })
+  await m.idle()
+  assert.equal(m.get(real.id).status, 'failed')
+  assert.throws(() => m.start({ workflow: 'upload-s3', params: { ...P, confirm: d.id }, userId: 'u1' }), refused(/already used/))
+})
+
+test('two confirmations in the same instant: one wins', async () => {
+  const { m, dry, confirm } = await gated()
+  const d = dry()
+  await m.idle()
+  const results = [confirm(d.id), (() => { try { return confirm(d.id) } catch (e) { return e } })()]
+  assert.ok(results[0].id)
+  assert.ok(results[1] instanceof RunRefused)
+})
+
+test('a dry run stays spent across a restart', async () => {
+  const work = dirOf('restart')
+  const a = await gated({ work })
+  const d = a.dry()
+  await a.m.idle()
+  a.confirm(d.id)
+  await a.m.idle()
+  await new Promise((r) => setTimeout(r, 30)) // let the run files land
+  const b = await gated({ work })
+  assert.throws(() => b.confirm(d.id), refused(/already used|15 minutes/))
 })
