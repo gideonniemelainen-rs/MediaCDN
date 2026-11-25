@@ -9,6 +9,7 @@ See `docs/` for architecture and decisions.
 - `web/` React + Vite + TypeScript client (Shaka Player)
 - `ad-service/` ad-decision API (Cloud Run); empty, planned in `docs/plans/ad-injection-plan.md`
 - `catalog/` selectable stream list; empty, the catalog is built from `web/src/catalog.ts` and each delivery's `index.json`
+- `shared/` TypeScript used by the web app, the pipeline and the tools, with no build step (Node runs it, Vite bundles it); the ABR ladder so far, see `docs/plans/shared-ladder.md`
 - `pipeline/` UGC transcoding pipeline (ffmpeg + Shaka Packager) and its local upload server; see `docs/plans/transcoding-pipeline.md` and `docs/plans/upload-page.md`
 
 ## Local workflow
@@ -17,10 +18,10 @@ Everything at once: `bash scripts/dev.sh` starts the database, origin, upload/au
 brew install ffmpeg                                  # once
 node scripts/probe-sources.mjs                       # check the public sources
 node scripts/fetch-sources.mjs [id ...]              # download titles into media/src/ (git-ignored)
-bash scripts/package.sh <id> [--quick]               # ABR ladder -> origin/<id>/ (HLS + DASH, CMAF)
+node scripts/package-title.mjs <id> [--quick]        # ABR ladder -> origin/<id>/ (HLS + DASH, CMAF); the rungs come from shared/
 node tools/serve-origin.mjs                          # origin on :8788 (CORS, ranges, /live/<id>/ simulated live)
 node tools/smoke-origin.mjs <id>                     # smoke-test the origin
-node --test tools/                                   # live-simulation unit tests
+node --test shared/ scripts/ tools/                  # ladder, packaging entry and live-simulation tests
 node pipeline/bin/ingest.mjs <file> [--id slug]      # validate + normalise an upload -> pipeline/work/<key>/
 node --test pipeline/                                # pipeline unit + end-to-end tests (needs ffmpeg)
 docker compose -f pipeline/compose.yaml up -d db     # Postgres for accounts and history (once per boot)

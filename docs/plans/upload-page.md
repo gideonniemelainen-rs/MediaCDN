@@ -41,7 +41,7 @@ upload -> probe -> validate -> normalise -> ladder -> package -> verify -> publi
 - `bin/serve.mjs` on `127.0.0.1:8790`, under `/api/pipeline`: `GET /health`, `POST /uploads` (raw streamed body, `X-Filename`, size cap from the profile), `GET /jobs`, `GET /jobs/:id`, `GET /jobs/:id/events` (SSE: current snapshot, then every change). Added since: all of these except `/health` need a session cookie, `/jobs` lists only your own jobs (an admin sees all), and `/uploads` serves the history from the database.
   - Snapshots persist to `work/jobs/<id>.json`. Jobs found running at startup are marked failed (`interrupted`). One job runs at a time.
   - It rejects requests whose `Host` is not localhost or whose `Origin` is not the dev server, because any web page could otherwise make it run ffmpeg on arbitrary files.
-- `scripts/package.sh`: backward-compatible `INPUT=` and `OUT=` env overrides and `PROGRESS=<file>`. The positional `slug` and `--quick` are unchanged.
+- `scripts/package.sh`: backward-compatible `INPUT=` and `OUT=` env overrides and `PROGRESS=<file>`. The positional `slug` and `--quick` were unchanged then; since 2026-11-25 the script takes its rungs from `RUNGS` and `--quick` moved to `scripts/package-title.mjs` (see `shared-ladder.md`).
 
 ## Frontend (`web/src/upload/`)
 
