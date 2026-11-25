@@ -10,10 +10,16 @@ import { extname, join, normalize, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { DASH_MANIFEST, buildIndex, mediaPlaylist, mediaPlaylistRep, parseLivePath, parseLiveSegment, parseMediaPlaylist } from '../shared/src/title-layout.ts'
 import { buildLivePlaylist, liveSegmentFile } from './live.mjs'
+import { createOriginSettings } from './origin-settings.mjs'
 
 const ROOT = fileURLToPath(new URL('../origin/', import.meta.url))
 const PORT = Number(process.argv[2] ?? 8788)
 const EPOCH = Date.now() // every live stream "started" when the server did
+// liveEnabled and liveWindow come from the settings (the pipeline API); without it the defaults apply.
+const settings = createOriginSettings({
+  url: process.env.PIPELINE_URL ?? 'http://127.0.0.1:8790/api/pipeline',
+  warn: (m) => console.warn(`origin: ${m}`),
+})
 
 const TYPES = {
   '.mpd': 'application/dash+xml',
@@ -74,7 +80,7 @@ async function localIndex() {
   const listing = await Promise.all(
     dirs.filter((d) => d.isDirectory()).map(async (d) => ({ slug: d.name, files: await readdir(join(ROOT, d.name)).catch(() => []) })),
   )
-  return buildIndex(listing, { live: true })
+  return buildIndex(listing, { live: (await settings.get()).liveEnabled })
 }
 
 const playlistCache = new Map()
@@ -92,11 +98,13 @@ async function vodPlaylist(slug, file) {
 
 /** /live/<slug>/<file>: generated media playlists and mapped segments; everything else is passed through. */
 async function serveLive(req, res, slug, file) {
+  const { liveEnabled, liveWindow } = await settings.get()
+  if (!liveEnabled) return send(res, 404, { 'Content-Type': 'text/plain' }, 'simulated live is disabled in the settings')
   const rep = mediaPlaylistRep(file)
   if (rep !== null) {
     const parsed = await vodPlaylist(slug, file)
     if (!parsed) return send(res, 404, { 'Content-Type': 'text/plain' }, 'not found')
-    const { text } = buildLivePlaylist(parsed, EPOCH, Date.now(), rep)
+    const { text } = buildLivePlaylist(parsed, EPOCH, Date.now(), rep, liveWindow)
     if (!text) return send(res, 404, { 'Content-Type': 'text/plain', 'Retry-After': '2' }, 'live not started yet')
     return send(res, 200, { 'Content-Type': TYPES['.m3u8'], 'Cache-Control': 'no-cache' }, text)
   }

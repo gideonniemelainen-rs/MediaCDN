@@ -73,3 +73,10 @@ test('maps live segment URIs back to VOD files', () => {
   assert.equal(liveSegmentFile(parsed, 'live0-3.m4s', 0), 'chunk-0-00001.m4s')
   assert.equal(liveSegmentFile(parsed, 'evil/../x.m4s', 0), null)
 })
+
+test('the window is a parameter: a wider one lists more finished segments', () => {
+  const t = EPOCH + 3 * LOOP * 1000 + 8.5 * 1000 // third loop, segments 0 and 1 done: seq 6..7 finished
+  assert.equal(uris(buildLivePlaylist(parsed, EPOCH, t, 0, 2).text).length, 2)
+  assert.equal(uris(buildLivePlaylist(parsed, EPOCH, t, 0, 3).text).length, 3)
+  assert.equal(uris(buildLivePlaylist(parsed, EPOCH, t, 0).text).length, 5, 'the default is 5')
+})

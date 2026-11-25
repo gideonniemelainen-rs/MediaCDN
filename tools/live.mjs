@@ -4,15 +4,16 @@
 
 import { liveSegment, parseLiveSegment } from '../shared/src/title-layout.ts'
 
-const WINDOW = 5
+export const DEFAULT_LIVE_WINDOW = 5
 
 /**
  * The live playlist at `nowMs` for a stream that started at `epochMs`. Sequence number `seq` maps
  * to VOD segment `seq % M`; each wrap of the loop carries an EXT-X-DISCONTINUITY because the
  * media timestamps restart. Segment URIs are `live<rep>-<seq>.m4s` (`liveSegment`) so every loop iteration is unique
- * on the wire (and therefore independently cacheable); `liveSegmentFile` maps them back.
+ * on the wire (and therefore independently cacheable); `liveSegmentFile` maps them back. `window` is how many
+ * segments the playlist lists (the `liveWindow` setting).
  */
-export function buildLivePlaylist(parsed, epochMs, nowMs, rep) {
+export function buildLivePlaylist(parsed, epochMs, nowMs, rep, window = DEFAULT_LIVE_WINDOW) {
   const { segments, init } = parsed
   const M = segments.length
   const starts = []
@@ -29,7 +30,7 @@ export function buildLivePlaylist(parsed, epochMs, nowMs, rep) {
   let done = 0
   while (done < M && starts[done] + segments[done].duration <= offset) done++
   const latest = loop * M + done - 1
-  const first = Math.max(0, latest - WINDOW + 1)
+  const first = Math.max(0, latest - window + 1)
   if (latest < 0) return { text: '', latest, first }
 
   const target = Math.ceil(Math.max(...segments.map((s) => s.duration)))
