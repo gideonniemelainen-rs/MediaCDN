@@ -11,11 +11,12 @@ import { PIPELINE_VERSION, jobKey } from './job.mjs'
 import { gopFrames, measureComplexity } from './complexity.mjs'
 import { LADDER_CRF, candidateHeights, planLadder, selectRungs } from '../../shared/src/ladder.ts'
 import { resolve } from '../../shared/src/settings.ts'
-import { DASH_MANIFEST, HLS_MASTER, mediaPlaylistRep, titleLocation } from '../../shared/src/title-layout.ts'
-import { chooseOutputId, verifyPackage } from './package.mjs'
+import { titleLocation } from '../../shared/src/title-layout.ts'
+import { chooseOutputId } from './package.mjs'
 import { DEFAULT_IMAGE, explainPackagerFailure, packageCommand, packagerKind } from './packagers.mjs'
 import { StageError } from './run.mjs'
 import { validate } from './validate.mjs'
+import { verifyTitleDir } from './verify-dir.mjs'
 
 const PACKAGE_SCRIPT = fileURLToPath(new URL('../../scripts/package.sh', import.meta.url))
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts', import.meta.url))
@@ -220,12 +221,7 @@ export function createSteps({ profile, work, origin, packageScript = PACKAGE_SCR
 
     async verify(ctx) {
       const stage = staging(ctx)
-      const files = await readdir(stage)
-      const master = await readFile(join(stage, HLS_MASTER), 'utf8').catch(() => '')
-      const playlists = {}
-      for (const f of files.filter((n) => mediaPlaylistRep(n) !== null)) playlists[f] = await readFile(join(stage, f), 'utf8')
-      const mpd = await readFile(join(stage, DASH_MANIFEST), 'utf8').catch(() => undefined)
-      const result = verifyPackage({ id: ctx.meta.outputId, files, master, playlists, mpd })
+      const result = await verifyTitleDir(stage, ctx.meta.outputId)
       if (!result.ok) {
         const failed = result.checks.filter((c) => !c.ok).map((c) => c.name)
         await rm(stage, { recursive: true, force: true })

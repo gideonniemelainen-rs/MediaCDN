@@ -103,7 +103,7 @@ export const WORKFLOWS: Readonly<Record<WorkflowId, Workflow>> = {
     id: 'make-ads', label: 'Make ad clips', kind: 'run', safety: 'safe',
     summary: 'Generates the ad test assets, packages them and writes the ad inventory under origin/ads/.',
     params: [slugs('ids', 'Ads', 'Leave empty for every ad.')],
-    stages: [stage('encode', 'Encode'), stage('package', 'Package', 'encode')],
+    stages: [stage('make', 'Encode and package')],
   },
   'smoke-origin': {
     id: 'smoke-origin', label: 'Smoke-test the origin', kind: 'run', safety: 'safe',
