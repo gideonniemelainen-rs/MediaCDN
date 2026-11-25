@@ -4,6 +4,7 @@
 # Needs root, so run it by hand:
 #   sudo bash tools/shape.sh on [rtt_ms] [loss_pct]    (defaults 80 ms, 1 %)
 #   sudo bash tools/shape.sh off
+#   sudo bash tools/shape.sh status    (pipes and rules still in place)
 # Delay is applied in each direction, so the round trip is the rtt you give. Loss is applied in each
 # direction too, so the loss a packet sees round trip is a little higher than the figure.
 # Untested on a machine where pf is already in use: `off` puts /etc/pf.conf back and releases the pf token.
@@ -35,14 +36,26 @@ EOF
     echo "shaping ports $ports: rtt ${rtt} ms, loss ${loss} % each way"
     ;;
   off)
-    pfctl -q -a "$anchor" -F all 2>/dev/null || true
-    dnctl -q flush
-    pfctl -q -f /etc/pf.conf 2>/dev/null || true
-    if [ -s "$token_file" ]; then pfctl -q -X "$(cat "$token_file")" 2>/dev/null || true; rm -f "$token_file"; fi
-    echo "shaping removed"
+    # Each step reports its own failure: a silent failure here leaves the machine's loopback shaped.
+    step() { echo "+ $*"; "$@" || echo "  (failed: $*)" >&2; }
+    step pfctl -a "$anchor" -F all
+    step dnctl -q flush
+    step pfctl -q -f /etc/pf.conf
+    if [ -s "$token_file" ]; then step pfctl -q -X "$(cat "$token_file")"; rm -f "$token_file"; fi
+    echo "--- what is left (both should be empty):"
+    dnctl list
+    pfctl -a "$anchor" -s rules 2>&1
+    ;;
+  status)
+    echo "--- dummynet pipes:"
+    dnctl list
+    echo "--- rules in anchor $anchor:"
+    pfctl -a "$anchor" -s rules 2>&1
+    echo "--- pf:"
+    pfctl -s info 2>&1 | sed -n '1,2p'
     ;;
   *)
-    echo "usage: sudo bash tools/shape.sh on [rtt_ms] [loss_pct] | off" >&2
+    echo "usage: sudo bash tools/shape.sh on [rtt_ms] [loss_pct] | off | status" >&2
     exit 1
     ;;
 esac
