@@ -124,3 +124,9 @@ Setup: `sudo bash tools/shape.sh on 80 1` (80 ms round trip, 1% loss), `chrome-l
 ### The unshaped control did not happen (2026-11-25)
 
 After `sudo bash tools/shape.sh off`, a fourth run still showed the shaping (first byte 91 to 116 ms, h3 connect 83 ms on the lab ports, 1 ms on :8788). A raw TCP connect to :8441 to :8443 took about 80 ms and to :8788 about 0.1 ms, so the delay is in the network path, not in Caddy, and `off` had not removed it. The cause is not known: the old `off` ignored its own errors. `shape.sh` now reports each step's failure, prints what is left, and has a `status` command. The h3 throughput question stays open until a run with the delay actually gone.
+
+### Unshaped control, and a hypothesis for the h3 gap (2026-11-25)
+
+With the delay really gone (raw TCP connect 0.1 ms on every port), one run showed all four quadrants on the same 2925 to 2929 kbps rung and h3 on par with h2: 307,239 against 345,379 kbps net, 11 against 10 ms per segment, 256 against 256 ms startup. So the h3 stack (Caddy's QUIC on loopback, Chrome) is not slow; the gap in the shaped runs came from the shaping.
+
+Hypothesis, not yet tested: loss is dropped per packet and loopback packets are large. TCP can send about 16 KB at a time on loopback and QUIC datagrams are about 1.2 KB. By the Mathis estimate (packet size / RTT x 1.22 / sqrt(loss)) at 85 ms and 1% loss that is about 15 Mbps for TCP and 1.4 Mbps for QUIC, and the shaped runs measured 12 to 19 Mbps for h1 and h2 and 1.5 to 1.8 Mbps for h3. If it holds, the shaped comparison measured the loopback's MTU, not the protocols. Predictions to check: delay only (`shape.sh on 80 0`) should leave h3 level with h2, and loss with the loopback MTU at 1500 (`shape.sh on 80 1 1500`) should bring h1 and h2 down to roughly h3's level. `shape.sh` takes an optional `lo0_mtu` for this and `off` restores the previous one.
