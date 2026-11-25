@@ -45,6 +45,8 @@ Each quadrant picks its own delivery, so one title can be compared across source
 | `s3-near`, `s3-far` | two S3 buckets, no CDN | `VITE_S3_NEAR_BASE` (or `VITE_S3_BASE`), `VITE_S3_FAR_BASE` |
 | `cdn-public`, `cdn-s3` | Media CDN in front of a public origin or S3 | `VITE_CDN_BASE` |
 
+The variables are defaults. **Settings** (groups `deliveries`, `packaging`, `player`, `origin`; schema in `shared/src/settings.ts`) are stored as sparse overrides in the `app_settings` table, one row per group, and served publicly by `GET /api/pipeline/settings`; only an admin can `PUT /settings/<group>` or `DELETE /settings/<group>/<field>`, with an `If-Match` revision check per group. Each client merges the overrides over its own defaults and keeps working on them if the API is unreachable: the web app refetches on tab focus (`web/src/settings/store.ts`), the pipeline reads the packaging group for each job (`createSteps`), and the origin reads the origin group with a 5 s cache (`tools/origin-settings.mjs`). Settings never hold secrets, and boot-time values (ports, `DATABASE_URL`) stay in env.
+
 The telemetry table marks the best value per metric when quadrants play the same stream. Unfocused quadrants are capped at 360p, so bitrate compares unfairly between a focused and an unfocused quadrant. A saved run records each quadrant's cap, and its charts say when the caps differed. Both the live table and a reopened run leave the average bitrate unmarked, with a note, when quadrants playing the same stream had different caps. The "uncapped" switch in the header lifts the cap on every quadrant, and the "compare" presets turn it on, so those comparisons are at equal quality. Segment times still depend on the rung chosen, so they are marked either way.
 
 ## Ingest

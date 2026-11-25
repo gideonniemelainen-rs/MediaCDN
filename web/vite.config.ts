@@ -15,7 +15,8 @@ export default defineConfig({
     proxy: { '/api/pipeline': 'http://127.0.0.1:8790' },
   },
   test: {
-    // Tests must not depend on a developer's web/.env.local: pin every base URL. Empty means "not configured".
+    // Tests must not depend on a developer's web/.env.local: pin every base URL (these are the defaults the settings
+    // are laid over, so the tests run on known ones). Empty means "not configured".
     env: {
       VITE_LOCAL_BASE: 'http://localhost:8788',
       VITE_LOCAL_BASE_H1: '',

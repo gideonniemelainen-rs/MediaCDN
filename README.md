@@ -30,7 +30,7 @@ node pipeline/bin/serve.mjs                          # upload + auth API on :879
 cd web && npm run dev                                # player; each quadrant picks its own delivery
 ```
 - Each quadrant has its own Delivery picker, so one title can be compared across sources side by side (the "compare deliveries" preset loads Big Buck Bunny from the local origin, both S3 buckets and Media CDN). The telemetry table marks the best value per metric when the same stream plays in several quadrants.
-- Deliveries and the `web/.env.local` variable each one reads:
+- Deliveries and the `web/.env.local` variable each one reads. These are the **defaults**: an admin can override a delivery's base URL or switch it off in the settings (stored in Postgres, served by the pipeline API at `GET /api/pipeline/settings`), and an override wins over the variable. With the API down the player runs on the variables alone:
 
 | Delivery | Meaning | Variable |
 | --- | --- | --- |

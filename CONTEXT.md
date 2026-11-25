@@ -6,7 +6,7 @@ Terms used in code, docs and architecture reviews. Use these names; add to this 
 
 **Quadrant** — one of the four players in the Player page. Each picks its own Delivery and stream. Exactly one is **focused** (has audio); the others are **unfocused**.
 
-**Delivery** — where a quadrant fetches a title from: `direct`, `local`, `s3-near`, `s3-far`, `cdn-public`, `cdn-s3`. A base URL and, for most, an `index.json` listing its titles. Today configured by `VITE_*_BASE` env; becomes a Setting.
+**Delivery** — where a quadrant fetches a title from: `direct`, `local`, `s3-near`, `s3-far`, `cdn-public`, `cdn-s3`. A base URL and, for most, an `index.json` listing its titles. Defined in `shared/src/deliveries.ts`; its base URL and on/off are Settings, with `VITE_*_BASE` env as the default.
 
 **Unfocused cap** — the maximum rendition height (360p, `UNFOCUSED_MAX_HEIGHT` in `shared/src/ladder.ts`) an unfocused quadrant is allowed, so four decodes stay usable. The **uncapped** switch lifts it on every quadrant so quadrants compare at equal quality.
 
@@ -32,7 +32,11 @@ Terms used in code, docs and architecture reviews. Use these names; add to this 
 
 **Workflow** *(planned)* — a named, typed task the GUI can run on the job runner with live logs: fetch sources, package a title, upload to S3, run the bench. Replaces running the standalone scripts by hand.
 
-**Settings** *(planned)* — config the GUI can edit, stored in Postgres and served by the pipeline API. Groups: deliveries, packaging, player behaviour, origin/ops. Boot-time values (ports, DB URL) stay in env and are shown read-only.
+**Settings** — config an admin can edit, stored in Postgres and served by the pipeline API (`GET /settings`, public; writes admin-only). The schema is `shared/src/settings.ts`. Boot-time values (ports, DB URL) stay in env, and no Setting holds a secret.
+
+**Group** — a set of Settings written and revisioned together: `deliveries`, `packaging`, `player`, `origin`. One row each in `app_settings`; a write checks the group's revision (`If-Match`).
+
+**Override** — a stored value for one Setting. Only overrides are stored; each client (web, pipeline, origin) lays them over its own defaults, so an empty store changes nothing and a client keeps working on its defaults when the API is down. Deleting an override restores the default.
 
 ## Measurement
 
