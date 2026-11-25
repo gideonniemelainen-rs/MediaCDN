@@ -57,6 +57,7 @@ function envDefaults(): Values {
 
 const DEFAULTS = envDefaults()
 let effective: Values = DEFAULTS
+let version = 0
 const listeners = new Set<() => void>()
 
 /**
@@ -65,8 +66,12 @@ const listeners = new Set<() => void>()
  */
 export function setDeliveryOverrides(overrides?: Values) {
   effective = resolve('deliveries', DEFAULTS, overrides)
+  version++
   listeners.forEach((l) => l())
 }
+
+/** Changes whenever the table does (a base or an enabled flag), for a hook that must react to it. */
+export const deliveriesVersion = () => version
 
 export const subscribeDeliveries = (l: () => void) => {
   listeners.add(l)

@@ -1,6 +1,6 @@
 import { parseIndex, type TitleIndex } from '@shared/title-layout.ts'
 import { CATALOG, resolveStream, streamsFromIndexes, type Stream } from './catalog'
-import { type Delivery, baseVarOf, indexUrl, isIndexed } from './deliveries'
+import { INDEXED_DELIVERIES, type Delivery, baseVarOf, indexUrl, isIndexed, subscribeDeliveries } from './deliveries'
 
 // Title indexes: what each packaged origin currently offers, and the streams derived from them. This is the mutable
 // part of the catalog; catalog.ts holds the static data and the pure derivation.
@@ -35,6 +35,7 @@ export function setIndex(delivery: Delivery, index: TitleIndex) {
 export function clearIndexes() {
   indexes.clear()
   statuses.clear()
+  loadedFrom.clear()
   changed()
 }
 
@@ -43,7 +44,10 @@ function setStatus(d: Delivery, status: IndexStatus) {
   changed()
 }
 
-const inflight = new Map<Delivery, Promise<void>>()
+/** The fetch that is running for a delivery, and the URL it is fetching: a result for a URL that is no longer current is dropped. */
+const inflight = new Map<Delivery, { url: string; promise: Promise<void> }>()
+/** The URL each delivery's index (loading, loaded or failed) is for, so a changed base URL can tell which are stale. */
+const loadedFrom = new Map<Delivery, string>()
 
 /**
  * Fetches a delivery's title index. A ready index is reused unless `force` is set (after an upload,
@@ -52,29 +56,48 @@ const inflight = new Map<Delivery, Promise<void>>()
  */
 export function loadIndex(delivery: Delivery, force = false, fetchFn: typeof fetch = fetch): Promise<void> {
   if (!isIndexed(delivery)) return Promise.resolve()
-  const running = inflight.get(delivery)
-  if (running) return running
-  if (statuses.get(delivery)?.state === 'ready' && !force) return Promise.resolve()
   const url = indexUrl(delivery)
+  const running = inflight.get(delivery)
+  if (running && running.url === url) return running.promise
+  if (statuses.get(delivery)?.state === 'ready' && !force) return Promise.resolve()
   if (!url) {
+    loadedFrom.delete(delivery)
     setStatus(delivery, { state: 'error', message: `no base URL configured (set ${baseVarOf(delivery)})` })
     return Promise.resolve()
   }
+  loadedFrom.set(delivery, url)
   setStatus(delivery, { state: 'loading' })
-  const p = (async () => {
+  const stale = () => indexUrl(delivery) !== url
+  const promise = (async () => {
     try {
       const res = await fetchFn(url, { cache: 'no-store' })
       if (!res.ok) throw new Error(`HTTP ${res.status} from ${url}`)
-      setIndex(delivery, parseIndex(await res.json()))
+      const index = parseIndex(await res.json())
+      if (stale()) return // the base URL changed while this was loading; the new URL has its own fetch
+      setIndex(delivery, index)
     } catch (e) {
-      setStatus(delivery, { state: 'error', message: e instanceof Error ? e.message : String(e) })
+      if (!stale()) setStatus(delivery, { state: 'error', message: e instanceof Error ? e.message : String(e) })
     } finally {
-      inflight.delete(delivery)
+      if (inflight.get(delivery)?.url === url) inflight.delete(delivery)
     }
   })()
-  inflight.set(delivery, p)
-  return p
+  inflight.set(delivery, { url, promise })
+  return promise
 }
+
+// When a delivery's base URL changes, whatever was loaded from the old one describes a different server: drop it, so
+// the next load starts clean. Enabling or disabling a delivery needs no reload, only a fresh derivation of the streams.
+subscribeDeliveries(() => {
+  for (const d of INDEXED_DELIVERIES) {
+    // Only what is known to come from a URL that is no longer current: an index set directly has no recorded URL.
+    if (loadedFrom.has(d) && loadedFrom.get(d) !== indexUrl(d)) {
+      indexes.delete(d)
+      statuses.delete(d)
+      loadedFrom.delete(d)
+    }
+  }
+  changed()
+})
 
 export function streamsFor(delivery: Delivery): Stream[] {
   return [...CATALOG, ...derived].filter((s) => resolveStream(s, delivery))

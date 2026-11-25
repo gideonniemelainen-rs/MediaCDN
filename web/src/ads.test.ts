@@ -85,3 +85,28 @@ describe('loadInventory', () => {
     }
   })
 })
+
+describe('the ads base follows the settings', () => {
+  it('fetches the inventory from the overridden base, and again when the base changes', async () => {
+    const { applySettings, resetSettings } = await import('./settings/store')
+    try {
+      resetAds()
+      const fetchFn = vi.fn(async () => new Response(JSON.stringify(doc)))
+      applySettings({ revision: 1, overrides: { player: { adsBase: 'https://ads-one.example.com/' } }, revisions: {} })
+      const first = await loadInventory(fetchFn)
+      await loadInventory(fetchFn)
+      expect(fetchFn).toHaveBeenCalledTimes(1)
+      expect(fetchFn).toHaveBeenLastCalledWith('https://ads-one.example.com/ads/ads.json', { cache: 'no-store' })
+      expect(first[0].clipUrl).toBe('https://ads-one.example.com/ads/a/ad.mp4')
+
+      applySettings({ revision: 2, overrides: { player: { adsBase: 'https://ads-two.example.com' } }, revisions: {} })
+      const second = await loadInventory(fetchFn)
+      expect(fetchFn).toHaveBeenCalledTimes(2)
+      expect(fetchFn).toHaveBeenLastCalledWith('https://ads-two.example.com/ads/ads.json', { cache: 'no-store' })
+      expect(second[0].clipUrl).toBe('https://ads-two.example.com/ads/a/ad.mp4')
+    } finally {
+      resetSettings()
+      resetAds()
+    }
+  })
+})

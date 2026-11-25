@@ -1,3 +1,5 @@
+import { playerSettings } from './settings/store'
+
 export interface Ad {
   id: string
   label: string
@@ -7,13 +9,11 @@ export interface Ad {
   attribution?: string
 }
 
-const env = import.meta.env as Record<string, string | undefined>
-const trim = (s: string | undefined) => s?.replace(/\/$/, '')
-/** Where ads are served from: origin/ads/ on the local origin for now (scripts/make-ads.mjs builds it). */
-const ADS_BASE = trim(env.VITE_ADS_BASE) ?? trim(env.VITE_LOCAL_BASE) ?? 'http://localhost:8788'
+/** Where ads are served from: origin/ads/ on the local origin unless the settings say otherwise (scripts/make-ads.mjs builds it). */
+const adsBase = () => playerSettings().adsBase
 
 /** Validates /ads/ads.json. Entries with a bad shape or a path outside /ads/ are dropped; a bad document throws. */
-export function parseInventory(json: unknown, base = ADS_BASE): Ad[] {
+export function parseInventory(json: unknown, base = adsBase()): Ad[] {
   const j = json as { version?: unknown; ads?: unknown } | null
   if (!j || j.version !== 1 || !Array.isArray(j.ads)) throw new Error('not an ad inventory (expected version 1 and ads[])')
   const ads: Ad[] = []
@@ -40,26 +40,32 @@ export function pickAd(ads: Ad[], lastId?: string, random: () => number = Math.r
 }
 
 let inventory: Promise<Ad[]> | undefined
+/** The base the cached inventory was fetched from: a changed base (a setting) is a different inventory. */
+let inventoryBase: string | undefined
 let lastId: string | undefined
 
 /** Forgets the cached inventory and the last pick (tests, and after the origin changes). */
 export function resetAds() {
   inventory = undefined
+  inventoryBase = undefined
   lastId = undefined
 }
 
 export function loadInventory(fetchFn: typeof fetch = fetch): Promise<Ad[]> {
+  const base = adsBase()
+  if (inventoryBase !== base) inventory = undefined
+  inventoryBase = base
   // Failures are not cached, so fixing the origin and clicking again works without a reload.
-  inventory ??= (async () => {
-    const url = `${ADS_BASE}/ads/ads.json`
+  const p: Promise<Ad[]> = (inventory ??= (async () => {
+    const url = `${base}/ads/ads.json`
     const res = await fetchFn(url, { cache: 'no-store' })
     if (!res.ok) throw new Error(`ad inventory: HTTP ${res.status} from ${url}`)
-    return parseInventory(await res.json())
+    return parseInventory(await res.json(), base)
   })().catch((e) => {
-    inventory = undefined
-    throw e instanceof TypeError ? new Error(`ad inventory unreachable at ${ADS_BASE} (is serve-origin running?)`) : e
-  })
-  return inventory
+    if (inventory === p) inventory = undefined
+    throw e instanceof TypeError ? new Error(`ad inventory unreachable at ${base} (is serve-origin running?)`) : e
+  }))
+  return p
 }
 
 export async function fetchAd(): Promise<Ad> {

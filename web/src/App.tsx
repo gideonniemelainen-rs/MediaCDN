@@ -2,8 +2,10 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { AdOverlay } from './AdOverlay'
 import { fetchAd } from './ads'
 import { resolveStream } from './catalog'
-import { DELIVERIES, DELIVERY_LABEL, TRANSPORTS, type Delivery, type Transport, isIndexed, transportProblem } from './deliveries'
+import { DELIVERIES, DELIVERY_LABEL, TRANSPORTS, type Delivery, type Transport, isEnabled, isIndexed, transportProblem } from './deliveries'
 import { findStream, loadIndex, pickForPreset, streamForDelivery, streamsFor } from './indexStore'
+import { playerSettings } from './settings/store'
+import { useSettings } from './settings/useSettings'
 import { useCatalogs } from './useCatalog'
 import { QuadrantPlayer } from './QuadrantPlayer'
 import { StatsOverlay } from './StatsOverlay'
@@ -50,7 +52,11 @@ export default function App() {
   const [showPanel, setShowPanel] = useState(true)
   const [showBench, setShowBench] = useState(false)
   // Unfocused quadrants are capped at 360p, which makes bitrate and segment times incomparable with the focused one.
-  const [uncapped, setUncapped] = useState(false)
+  // Until someone flips the switch it follows the settings' default, which can arrive after the first render.
+  const [uncappedChoice, setUncappedChoice] = useState<boolean | null>(null)
+  const settings = useSettings()
+  const player = playerSettings()
+  const uncapped = uncappedChoice ?? player.uncappedDefault
   const [adMessage, setAdMessage] = useState<string | null>(null)
   const { indexed, statusOf, reload } = useCatalogs(state.deliveries)
 
@@ -63,7 +69,7 @@ export default function App() {
   // A preset entry the delivery doesn't offer (e.g. a title that isn't packaged yet) falls back to
   // whichever VOD titles are available, so presets still fill the grid; 'live' stays empty if absent.
   async function applyPreset(name: string, preset: PresetSlot[]) {
-    if (COMPARING.has(name)) setUncapped(true)
+    if (COMPARING.has(name)) setUncappedChoice(true)
     const deliveries = preset.map((p, slot) => p.delivery ?? latest.current.deliveries[slot])
     // Titles are discovered from each delivery's index, so wait for the ones this layout needs.
     await Promise.all(deliveries.map((d) => loadIndex(d)))
@@ -127,15 +133,22 @@ export default function App() {
           <input type="checkbox" checked={showPanel} onChange={(e) => setShowPanel(e.target.checked)} /> telemetry
         </label>
         <label title="Lift the 360p cap on unfocused quadrants, so quadrants are compared at the same quality">
-          <input type="checkbox" checked={uncapped} onChange={(e) => setUncapped(e.target.checked)} /> uncapped
+          <input type="checkbox" checked={uncapped} onChange={(e) => setUncappedChoice(e.target.checked)} /> uncapped
         </label>
         <label>
           <input type="checkbox" checked={showBench} onChange={(e) => setShowBench(e.target.checked)} /> benchmark
         </label>
-        <button onClick={triggerAd} disabled={!!state.ad}>
-          Trigger ad
-        </button>
+        {player.adsEnabled && (
+          <button onClick={triggerAd} disabled={!!state.ad}>
+            Trigger ad
+          </button>
+        )}
         {adMessage && <span className="error">ad: {adMessage}</span>}
+        {settings.status === 'unavailable' && (
+          <span className="error" title="The pipeline server did not answer, so the delivery settings fall back to the build's defaults">
+            settings unavailable
+          </span>
+        )}
       </header>
 
       <div className="grid">
@@ -146,7 +159,9 @@ export default function App() {
           // Say why a quadrant is empty or unavailable when the cause is its source's index.
           const index = isIndexed(delivery) ? statusOf(delivery) : null
           const transport = state.transports[slot]
+          const disabled = !isEnabled(delivery)
           const note =
+            (disabled ? 'Disabled in settings' : undefined) ??
             transportProblem(delivery, transport) ??
             (index?.state === 'error' ? index.message : index?.state === 'loading' ? 'Loading titles…' : undefined)
           return (
@@ -161,9 +176,11 @@ export default function App() {
                   value={delivery}
                   onChange={(e) => void changeDelivery(slot, e.target.value as Delivery)}
                 >
-                  {DELIVERIES.map((d) => (
+                  {/* A disabled delivery leaves the picker, except for the quadrant still on it, which keeps its choice visible. */}
+                  {DELIVERIES.filter((d) => isEnabled(d) || d === delivery).map((d) => (
                     <option key={d} value={d}>
                       {DELIVERY_LABEL[d]}
+                      {isEnabled(d) ? '' : ' (disabled)'}
                     </option>
                   ))}
                 </select>

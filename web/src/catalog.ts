@@ -1,5 +1,5 @@
 import { titleLocation, liveLocation, type TitleIndex } from '@shared/title-layout.ts'
-import { type Delivery, type Transport, deliveryBase, indexPrefix, transportBase } from './deliveries'
+import { type Delivery, type Transport, deliveryBase, indexPrefix, isEnabled, transportBase } from './deliveries'
 
 export type StreamKind = 'VOD' | 'LIVE'
 export type Protocol = 'progressive' | 'hls' | 'dash'
@@ -139,12 +139,13 @@ const MIME: Record<Protocol, string | undefined> = {
 }
 
 /**
- * The URL and protocol for a stream under a delivery mode, or undefined if it isn't offered there.
+ * The URL and protocol for a stream under a delivery mode, or undefined if it isn't offered there (or the delivery is disabled).
  * A transport picks the lab listener for the local origin and is ignored for every other delivery.
  */
 export function resolveStream(stream: Stream, delivery: Delivery, transport?: Transport | null): Resolved | undefined {
   const variant = stream.variants[delivery]
-  if (!variant) return undefined
+  // A delivery the settings have switched off offers nothing; the quadrant says so (see App.tsx).
+  if (!variant || !isEnabled(delivery)) return undefined
   if (delivery === 'direct') {
     return { url: variant.location, protocol: variant.protocol, mimeType: MIME[variant.protocol] }
   }
