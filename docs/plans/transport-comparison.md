@@ -130,3 +130,18 @@ After `sudo bash tools/shape.sh off`, a fourth run still showed the shaping (fir
 With the delay really gone (raw TCP connect 0.1 ms on every port), one run showed all four quadrants on the same 2925 to 2929 kbps rung and h3 on par with h2: 307,239 against 345,379 kbps net, 11 against 10 ms per segment, 256 against 256 ms startup. So the h3 stack (Caddy's QUIC on loopback, Chrome) is not slow; the gap in the shaped runs came from the shaping.
 
 Hypothesis, not yet tested: loss is dropped per packet and loopback packets are large. TCP can send about 16 KB at a time on loopback and QUIC datagrams are about 1.2 KB. By the Mathis estimate (packet size / RTT x 1.22 / sqrt(loss)) at 85 ms and 1% loss that is about 15 Mbps for TCP and 1.4 Mbps for QUIC, and the shaped runs measured 12 to 19 Mbps for h1 and h2 and 1.5 to 1.8 Mbps for h3. If it holds, the shaped comparison measured the loopback's MTU, not the protocols. Predictions to check: delay only (`shape.sh on 80 0`) should leave h3 level with h2, and loss with the loopback MTU at 1500 (`shape.sh on 80 1 1500`) should bring h1 and h2 down to roughly h3's level. `shape.sh` takes an optional `lo0_mtu` for this and `off` restores the previous one.
+
+### Checks of the packet-size hypothesis (2026-11-25, one run each)
+
+Setup as before (fresh `chrome-lab.sh`, "compare transports", uncapped); throughput is net kbps, which accounts for segment size.
+
+| | h1 :8441 | h2 :8442 | h3 :8443 |
+| --- | --- | --- | --- |
+| Unshaped (earlier control) | 362,898 | 345,379 | 307,239 |
+| Delay only, 80 ms RTT, no loss | 36,403 | 47,818 | 33,059 |
+| 80 ms RTT, 1% loss, loopback MTU 1500 | 2,533 | 1,530 | 2,659 |
+| 80 ms RTT, 1% loss, MTU 16384 (the first shaped runs) | 12,000 to 15,000 | 13,000 to 19,000 | 1,500 to 1,800 |
+
+- **The hypothesis held.** With 1500-byte packets on loopback, h1 and h2 fell from 12 to 19 Mbps to 1.5 to 2.5 Mbps, in the range h3 had shown all along, and h3 was no longer the outlier. With delay only there was no tenfold gap (h3 33 against 36 and 48 Mbps). So the first shaped runs measured the loopback MTU, not the protocols, and are not evidence about h3.
+- **Under realistic loss and delay (MTU 1500), h3 did best, in this one run.** Startup 1.07 s against 2.45 s (h1) and 4.22 s (h2); throughput level with h1 (2.66 against 2.53 Mbps) and above h2 (1.53); first byte 86 ms (about one round trip) against 96 ms (h1) and 194 ms (h2, retransmissions); connect 83 ms against 162 ms for both TCP listeners. h3 also reached 2545 kbps average against 1756 (h1) and 932 (h2, which never left the 360p rung), so h2's bandwidth estimate stayed low.
+- **Not established.** It is one run per condition and the quadrants play at once. The h1 against h2 difference could be noise, or it could be real: h1 opens several connections and h2 one, which would help h1 under loss (not tested). With delay only, h3's startup was 6.4 s against 0.75 to 0.84 s for the others while its throughput was normal, which this data does not explain.
