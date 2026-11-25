@@ -16,7 +16,7 @@ Terms used in code, docs and architecture reviews. Use these names; add to this 
 
 **Title** — one playable asset: the directory `origin/<id>/` holding HLS and DASH over shared CMAF segments. Uploads become `ugc-<name>` titles.
 
-**Title layout** — the file names inside a Title: `master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s` (and `live<N>-<seq>.m4s` in simulated live). Written by the Packagers, read by the origin, index builders, verify stage and web catalog.
+**Title layout** — the file names inside a Title: `master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s` (and `live<N>-<seq>.m4s` in simulated live). Defined once in `shared/src/title-layout.ts` (names, URL builders, the title index, the playlist parser), with the name templates handed to both Packagers as `INIT_TEMPLATE`, `CHUNK_TEMPLATE`, `PLAYLIST_TEMPLATE`, `HLS_MASTER` and `DASH_MANIFEST`. Written by the Packagers, read by the origin, index builders, verify stage and web catalog. ffmpeg's DASH muxer always names the HLS playlists `media_<n>.m3u8` itself, so a real-ffmpeg test checks that name against the module.
 
 **Packager** — what writes a Title: `ffmpeg` (`scripts/package.sh`, host) or `shaka` (`pipeline/scripts/package-shaka.sh`, worker image). Both must produce the same Title layout. `node scripts/package-title.mjs <id>` packages a Title by hand.
 

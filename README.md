@@ -9,7 +9,7 @@ See `docs/` for architecture and decisions.
 - `web/` React + Vite + TypeScript client (Shaka Player)
 - `ad-service/` ad-decision API (Cloud Run); empty, planned in `docs/plans/ad-injection-plan.md`
 - `catalog/` selectable stream list; empty, the catalog is built from `web/src/catalog.ts` and each delivery's `index.json`
-- `shared/` TypeScript used by the web app, the pipeline and the tools, with no build step (Node runs it, Vite bundles it); the ABR ladder so far, see `docs/plans/shared-ladder.md`
+- `shared/` TypeScript used by the web app, the pipeline and the tools, with no build step (Node runs it, Vite bundles it); the ABR ladder and the Title layout (file names, URLs, the title index), see `docs/plans/shared-ladder.md` and `docs/plans/title-layout.md`
 - `pipeline/` UGC transcoding pipeline (ffmpeg + Shaka Packager) and its local upload server; see `docs/plans/transcoding-pipeline.md` and `docs/plans/upload-page.md`
 
 ## Local workflow

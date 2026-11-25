@@ -54,7 +54,7 @@ Each stage is a pure planning function plus a thin runner, as in `tools/live.mjs
 - **Content-aware ladder.** A quick complexity probe classifies screen content versus film. Screen content gets tuned encodes (lower bitrates, resolution kept high so text stays sharp). Capped CRF with VBV replaces fixed bitrates.
 - **Keyframes on segment boundaries.** `-g` and `keyint_min` are derived from the CFR rate, and a check on packets asserts alignment. Normalise already provides the stable frame rate this needs.
 - **Shaka Packager** produces CMAF HLS + DASH with `AVERAGE-BANDWIDTH`, `FRAME-RATE` and correct DASH `type`.
-- **Output layout stays compatible** with what `web/src/catalog.ts`, `tools/live.mjs` and `tools/smoke-origin.mjs` read: `<id>/master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s`. If Shaka's naming differs, use its naming templates or a rename step rather than changing the consumers.
+- **Output layout stays compatible** with what the origin, the verify stage and the web catalog read, defined in `shared/src/title-layout.ts` (since 2026-11-25 both packagers are handed the names, see `title-layout.md`): `<id>/master.m3u8`, `manifest.mpd`, `media_N.m3u8`, `init-N.m4s`, `chunk-N-NNNNN.m4s`. If Shaka's naming differs, use its naming templates or a rename step rather than changing the consumers.
 - A rung at or below 360p is always emitted, because unfocused quadrants cap at 360 (`web/src/QuadrantPlayer.tsx`).
 
 ### Shaka Packager spike (`pipeline/spike/shaka-spike.sh`)
