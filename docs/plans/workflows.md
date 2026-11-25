@@ -1,6 +1,6 @@
 # Step 4: Workflows, a registry on the job runner
 
-Status: planned 2026-11-25, decisions settled (listed at the end), nothing built. Fourth of six steps toward a GUI-driven tool; steps 1-3 are `shared-ladder.md`, `title-layout.md` and `settings-and-deliveries.md` (built). Terms are in `CONTEXT.md`. Step 5 builds the Workflows page on what this step serves.
+Status: planned 2026-11-25, decisions settled (listed at the end). Item 1 done 2026-11-25 (`shared/src/workflows.ts`: eleven workflows, eight runnable and three guides, with typed params, stage graphs, `validateParams`, `stagesFor` and `isDryRun`; 10 tests, `node --test shared/` 58 pass, strict type-check clean; list params and a `target` type were added beyond the settings field types). Items 2-7 not started. Fourth of six steps toward a GUI-driven tool; steps 1-3 are `shared-ladder.md`, `title-layout.md` and `settings-and-deliveries.md` (built). Terms are in `CONTEXT.md`. Step 5 builds the Workflows page on what this step serves.
 
 ## Why
 
