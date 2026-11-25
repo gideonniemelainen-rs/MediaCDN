@@ -110,3 +110,13 @@ Modified:
 - **Safari and Firefox** are out of the forced-protocol runs (see Decisions).
 - **S3 (near and far) and Media CDN** report `unknown` until `Timing-Allow-Origin` is configured outside this repo.
 - **Shaping needs `sudo`**, so it is run by hand.
+
+## First shaped runs (2026-11-25)
+
+Setup: `sudo bash tools/shape.sh on 80 1` (80 ms round trip, 1% loss), `chrome-lab.sh` relaunched for each run, "compare transports" (bbb over h1 on :8441, h2 on :8442, h3 on :8443, plain local on :8788, uncapped). Three runs.
+
+- **The shaping works on loopback and is not applied to the plain origin.** A Node probe measured about 85 ms per request on :8441 to :8443 and 1.2 ms on :8788; TCP plus TLS setup took about 167 ms.
+- **Connection setup:** h2 connect time was 162 and 163 ms (two of three runs; the third was 421 ms), h3 was 83, 83 and 86 ms. That is the expected shape, one round trip for QUIC and two for TCP with TLS, and it repeated.
+- **h3 was about ten times slower in throughput, in all three runs**, which is the opposite of the usual expectation under loss. Net throughput was 1.5 to 1.8 Mbps for h3 against 12 to 19 Mbps for h1 and h2, segment time 0.86 to 1.06 s against 0.2 to 0.29 s, and startup 1.9 to 3.9 s against 0.8 to 1.3 s. The h3 quadrant also stayed on the 360p rung (932 kbps, no switches) because its bandwidth estimate was low, so its segments are smaller as well. The cause is not known. Checked and ruled out: Caddy logged no UDP buffer warning. Not yet done: the same run with shaping off, which separates "h3 is slow in this setup" from "h3 is slow under loss and delay".
+- **Two bugs in my capture, found on the way and fixed.** The by-transport table averaged quadrants on different listeners (the shaped :8441 and the unshaped :8788 both read `h1`), so it now groups by origin too. And requests answered from the browser cache were misread: over HTTPS Chrome still names the protocol a cached response was first fetched with, so cache hits looked like network requests at 0.3 to 1 ms. A request with `transferSize` 0 is now flagged `httpCache`, with no timings and not counted toward the observed protocol. The lab listeners also send `Cache-Control: no-store`, so a lab run never uses the cache.
+- **Caveats:** three runs, one title, one machine, quadrants playing at the same time through one shaped link, and the focused quadrant is not special here only because the preset lifts the cap.

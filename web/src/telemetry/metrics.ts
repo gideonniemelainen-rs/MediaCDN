@@ -16,10 +16,28 @@ export interface Summary {
   liveLatencyS: number | null
   /** The protocol most of the session's requests were observed to use; null before any request. */
   transport: ObservedTransport | null
+  /** The host and port most requests went to (`localhost:8441`), so lab listeners and the plain origin are told apart. Null before any request. */
+  origin: string | null
   /** Mean request-to-first-byte time over requests that reported one. Null when the browser hid it. */
   meanTtfbMs: number | null
   /** Mean connection setup time over the requests that opened a connection (a reused one costs 0). Null when none did. */
   meanConnectMs: number | null
+}
+
+/** The host:port most requests went to, null with no requests or no parseable URL. */
+export function dominantOrigin(requests: readonly TelemetryEvent[]): string | null {
+  const counts = new Map<string, number>()
+  for (const r of requests) {
+    try {
+      const host = new URL(String(r.data.url)).host
+      counts.set(host, (counts.get(host) ?? 0) + 1)
+    } catch {
+      // a request without a usable URL says nothing about the origin
+    }
+  }
+  let best: string | null = null
+  for (const [h, n] of counts) if (best === null || n > counts.get(best)!) best = h
+  return best
 }
 
 /** The protocol seen most often among requests that reported one, `unknown` if none did, null with no requests. */
@@ -27,6 +45,8 @@ export function dominantTransport(requests: readonly TelemetryEvent[]): Observed
   if (requests.length === 0) return null
   const counts = new Map<ObservedTransport, number>()
   for (const r of requests) {
+    // A cache hit was not fetched over this protocol, whatever the browser says it was first fetched with.
+    if (r.data.httpCache === true) continue
     // Request events already carry the normalised value (h1, h2, h3 or unknown), not nextHopProtocol.
     const t = r.data.transport
     if (t === 'h1' || t === 'h2' || t === 'h3') counts.set(t, (counts.get(t) ?? 0) + 1)
@@ -128,6 +148,7 @@ export function summarize(events: readonly TelemetryEvent[], slot: number, now: 
     throughputKbps: latency > 0 ? (bytes * 8) / latency : null,
     liveLatencyS: lastSample ? num(lastSample.data.liveLatencyS) : null,
     transport: dominantTransport(requests),
+    origin: dominantOrigin(requests),
     meanTtfbMs: mean(ttfb),
     meanConnectMs: mean(connects),
   }
@@ -135,6 +156,8 @@ export function summarize(events: readonly TelemetryEvent[], slot: number, now: 
 
 export interface TransportGroup {
   delivery: string
+  /** host:port; quadrants on different listeners are never averaged together. */
+  origin: string
   transport: ObservedTransport
   /** How many quadrants fall in the group. */
   quadrants: number
@@ -147,16 +170,17 @@ export interface TransportGroup {
 }
 
 /**
- * Quadrants grouped by delivery and the protocol actually observed, with each metric averaged over
+ * Quadrants grouped by delivery, origin and the protocol actually observed, with each metric averaged over
  * the group's quadrants that have it. The grouping uses what was observed rather than what was asked
  * for, so a fallback (h3 requested, h2 served) shows up under h2.
  */
 export function summarizeByTransport(rows: readonly { delivery?: string; summary: Summary | null }[]): TransportGroup[] {
-  const groups = new Map<string, { delivery: string; transport: ObservedTransport; summaries: Summary[] }>()
+  const groups = new Map<string, { delivery: string; origin: string; transport: ObservedTransport; summaries: Summary[] }>()
   for (const { delivery, summary } of rows) {
     if (!summary?.transport) continue
-    const key = `${delivery ?? '?'}|${summary.transport}`
-    const g = groups.get(key) ?? { delivery: delivery ?? '?', transport: summary.transport, summaries: [] }
+    const origin = summary.origin ?? '?'
+    const key = `${delivery ?? '?'}|${origin}|${summary.transport}`
+    const g = groups.get(key) ?? { delivery: delivery ?? '?', origin, transport: summary.transport, summaries: [] }
     g.summaries.push(summary)
     groups.set(key, g)
   }
@@ -165,8 +189,9 @@ export function summarizeByTransport(rows: readonly { delivery?: string; summary
     return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null
   }
   return [...groups.values()]
-    .map(({ delivery, transport, summaries: s }) => ({
+    .map(({ delivery, origin, transport, summaries: s }) => ({
       delivery,
+      origin,
       transport,
       quadrants: s.length,
       startupMs: mean(s.map((x) => x.startupMs)),
@@ -176,7 +201,7 @@ export function summarizeByTransport(rows: readonly { delivery?: string; summary
       meanTtfbMs: mean(s.map((x) => x.meanTtfbMs)),
       meanConnectMs: mean(s.map((x) => x.meanConnectMs)),
     }))
-    .sort((a, b) => a.delivery.localeCompare(b.delivery) || a.transport.localeCompare(b.transport))
+    .sort((a, b) => a.delivery.localeCompare(b.delivery) || a.origin.localeCompare(b.origin) || a.transport.localeCompare(b.transport))
 }
 
 export function toJSON(events: readonly TelemetryEvent[]): string {

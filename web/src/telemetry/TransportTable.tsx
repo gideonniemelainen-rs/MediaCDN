@@ -14,14 +14,14 @@ export function TransportTable({ rows }: { rows: readonly SummaryRowData[] }) {
     <table aria-label="By transport">
       <thead>
         <tr>
-          <th>delivery</th><th>proto</th><th>quads</th><th>startup ms</th><th>rebuf %</th>
+          <th>delivery</th><th>origin</th><th>proto</th><th>quads</th><th>startup ms</th><th>rebuf %</th>
           <th>seg ms</th><th>kbps net</th><th>ttfb ms</th><th>connect ms</th>
         </tr>
       </thead>
       <tbody>
         {groups.map((g) => (
-          <tr key={`${g.delivery}|${g.transport}`}>
-            <td>{g.delivery}</td><td>{g.transport}</td><td>{g.quadrants}</td>
+          <tr key={`${g.delivery}|${g.origin}|${g.transport}`}>
+            <td>{g.delivery}</td><td>{g.origin}</td><td>{g.transport}</td><td>{g.quadrants}</td>
             <td>{f(g.startupMs)}</td><td>{f(g.rebufferRatio === null ? null : g.rebufferRatio * 100, 1)}</td>
             <td>{f(g.meanSegmentLatencyMs)}</td><td>{f(g.throughputKbps)}</td>
             <td>{f(g.meanTtfbMs, 1)}</td><td>{f(g.meanConnectMs, 1)}</td>

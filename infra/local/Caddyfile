@@ -21,8 +21,11 @@
 
 (origin) {
 	tls infra/local/localhost.pem infra/local/localhost-key.pem
-	# The origin already sends CORS, Timing-Allow-Origin, ranges and cache headers; Caddy passes them through.
-	reverse_proxy localhost:8788
+	# The origin already sends CORS, Timing-Allow-Origin and ranges; Caddy passes them through.
+	reverse_proxy localhost:8788 {
+		# The lab measures the network, not the browser cache: a cached segment never uses the protocol under test.
+		header_down Cache-Control "no-store"
+	}
 }
 
 https://localhost:8441 {

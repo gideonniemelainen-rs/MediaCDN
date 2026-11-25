@@ -46,4 +46,6 @@ curl -sk --http2   -o /dev/null -w '%{http_version}\n' https://localhost:8442/in
 curl -sk --http3-only -o /dev/null -w '%{http_version}\n' https://localhost:8443/index.json # 3 (needs a curl built with HTTP/3)
 ```
 
+The lab listeners send `Cache-Control: no-store`, so a run never uses Chrome's HTTP cache (the plain origin on :8788 still does, and its cached requests are flagged `httpCache`).
+
 In the app, the observed protocol is the `transport` field on each `request` event (milestone 1).

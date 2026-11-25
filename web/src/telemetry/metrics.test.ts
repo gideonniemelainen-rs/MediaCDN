@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { Telemetry } from './store'
-import { capOf, dominantTransport, summarize, summarizeByTransport, toCSV, type Summary } from './metrics'
+import { capOf, dominantOrigin, dominantTransport, summarize, summarizeByTransport, toCSV, type Summary } from './metrics'
 import type { EventType, TelemetryEvent } from './types'
 
 const ev = (t: number, type: EventType, data: Record<string, unknown> = {}, slot = 0): TelemetryEvent => ({
@@ -104,6 +104,9 @@ describe('observed transport', () => {
     expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, {})])).toBe('unknown')
     expect(dominantTransport([req(1, { transport: 'unknown' }), req(2, { transport: 'h2' })])).toBe('h2')
     expect(dominantTransport([req(1, { transport: 'h1' }), req(2, { transport: 'h1' }), req(3, { transport: 'h2' })])).toBe('h1')
+    // Cache hits do not count, even though the browser still names a protocol for them.
+    expect(dominantTransport([req(1, { transport: 'h1', httpCache: true }), req(2, { transport: 'h1', httpCache: true }), req(3, { transport: 'h2' })])).toBe('h2')
+    expect(dominantTransport([req(1, { transport: 'h2', httpCache: true })])).toBe('unknown')
   })
 
   it('goes into the summary with mean time to first byte and mean connect time over new connections only', () => {
@@ -133,7 +136,7 @@ describe('observed transport', () => {
 describe('summarizeByTransport', () => {
   const sum = (transport: Summary['transport'], over: Partial<Summary> = {}): Summary => ({
     startupMs: 100, rebufferCount: 0, rebufferMs: 0, rebufferRatio: 0, switches: 0, avgBitrateKbps: 1000, errors: 0, requests: 5,
-    meanSegmentLatencyMs: 20, throughputKbps: 4000, liveLatencyS: null, transport, meanTtfbMs: 5, meanConnectMs: null, ...over,
+    meanSegmentLatencyMs: 20, throughputKbps: 4000, liveLatencyS: null, transport, origin: 'localhost:8442', meanTtfbMs: 5, meanConnectMs: null, ...over,
   })
 
   it('groups by delivery and observed protocol, averaging over the group', () => {
@@ -149,6 +152,14 @@ describe('summarizeByTransport', () => {
     expect(groups[0].meanConnectMs).toBeNull()
   })
 
+  it('keeps quadrants on different origins apart even when they use the same protocol', () => {
+    const groups = summarizeByTransport([
+      { delivery: 'local', summary: sum('h1', { origin: 'localhost:8441', throughputKbps: 13000 }) },
+      { delivery: 'local', summary: sum('h1', { origin: 'localhost:8788', throughputKbps: 900000 }) },
+    ])
+    expect(groups.map((g) => [g.origin, g.quadrants, g.throughputKbps])).toEqual([['localhost:8441', 1, 13000], ['localhost:8788', 1, 900000]])
+  })
+
   it('skips idle quadrants and ones with no requests yet', () => {
     expect(summarizeByTransport([{ delivery: 'local', summary: null }, { delivery: 'local', summary: sum(null) }])).toEqual([])
   })
@@ -162,5 +173,13 @@ describe('capOf', () => {
     expect(capOf([cap(1, 0, Infinity), cap(2, 0, 360), cap(3, 1, null)], 0)).toBe(360)
     expect(capOf([cap(1, 1, null)], 1)).toBeNull()
     expect(capOf([cap(1, 1, 360)], 0)).toBeUndefined()
+  })
+})
+
+describe('dominantOrigin', () => {
+  it('is the host:port most requests went to, and null with none or with no usable URL', () => {
+    expect(dominantOrigin([])).toBeNull()
+    expect(dominantOrigin([req(1, { url: 'https://localhost:8443/a' }), req(2, { url: 'https://localhost:8443/b' }), req(3, { url: 'http://localhost:8788/c' })])).toBe('localhost:8443')
+    expect(dominantOrigin([req(1, { url: 'not a url' }), req(2, {})])).toBeNull()
   })
 })

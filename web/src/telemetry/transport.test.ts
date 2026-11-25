@@ -43,9 +43,11 @@ describe('pickTiming', () => {
     expect(pickTiming([hidden], hidden.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null, httpCache: false })
   })
 
-  it('recognises a response from the HTTP cache: no protocol, no network timings', () => {
-    const cached = entry({ nextHopProtocol: '', transferSize: 0, connectStart: 5, connectEnd: 5 })
-    expect(pickTiming([cached], cached.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null, httpCache: true })
+  it('recognises a response from the HTTP cache, whether the protocol is empty (HTTP) or the original one (HTTPS)', () => {
+    const plain = entry({ nextHopProtocol: '', transferSize: 0, connectStart: 5, connectEnd: 5 })
+    expect(pickTiming([plain], plain.name, 1001)).toEqual({ transport: 'unknown', connectMs: null, ttfbMs: null, httpCache: true })
+    const secure = entry({ nextHopProtocol: 'h2', transferSize: 0 })
+    expect(pickTiming([secure], secure.name, 1001)).toEqual({ transport: 'h2', connectMs: null, ttfbMs: null, httpCache: true })
   })
 
   it('returns null when no entry has that name', () => {

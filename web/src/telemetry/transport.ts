@@ -60,8 +60,9 @@ export function pickTiming(
   const transport = normaliseTransport(best.nextHopProtocol)
   // Without Timing-Allow-Origin a cross-origin entry reports zeros for everything but the end times.
   const hidden = transport === 'unknown' && best.requestStart === 0
-  // A cache hit has a request time but no bytes over the network and no protocol; its "first byte" is a disk read.
-  const httpCache = !hidden && best.transferSize === 0 && best.nextHopProtocol === ''
+  // A cache hit has a request time but no bytes over the network; its "first byte" is a disk read. Over
+  // HTTPS Chrome still reports the protocol the response was first fetched with, so the protocol cannot tell.
+  const httpCache = !hidden && best.transferSize === 0
   const unusable = hidden || httpCache
   return {
     transport,
